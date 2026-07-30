@@ -77,6 +77,36 @@ html, body {
   border-bottom: 1px solid var(--line);
 }
 
+.alert-banner {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 40px;
+  margin: 16px 0 0;
+  padding: 0 14px;
+  border-radius: 10px;
+  background: rgba(255, 92, 108, 0.16);
+  color: #fff;
+  border: 1px solid rgba(255, 92, 108, 0.35);
+  font-family: var(--font-display);
+  font-size: 12px;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  transition: opacity 0.25s ease, transform 0.25s ease;
+  opacity: 0;
+  transform: translateY(-10px);
+  pointer-events: none;
+}
+
+.alert-banner.visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.alert-banner.hidden {
+  display: flex;
+}
+
 .brand {
   display: flex;
   align-items: center;

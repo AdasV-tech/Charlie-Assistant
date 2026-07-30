@@ -24,6 +24,7 @@ const consoleLog   = document.getElementById('consoleLog');
 const clearBtn     = document.getElementById('clearBtn');
 const clockReadout = document.getElementById('clockReadout');
 const tickGroup    = document.getElementById('tickGroup');
+const alertBanner  = document.getElementById('alertBanner');
 
 const voiceSelect  = document.getElementById('voiceSelect');
 const rateRange    = document.getElementById('rateRange');
@@ -76,6 +77,18 @@ function addLogLine(text, who) {
   line.textContent = text;
   consoleLog.appendChild(line);
   consoleLog.scrollTop = consoleLog.scrollHeight;
+}
+
+function showAlert(message) {
+  if (!alertBanner) return;
+  alertBanner.textContent = message;
+  alertBanner.classList.remove('hidden');
+  alertBanner.classList.add('visible');
+
+  setTimeout(() => {
+    alertBanner.classList.remove('visible');
+    alertBanner.classList.add('hidden');
+  }, 4200);
 }
 
 clearBtn.addEventListener('click', () => {
@@ -209,11 +222,17 @@ if (SpeechRecognitionAPI) {
     isListening = false;
     setState('sleeping');
     if (event.error === 'not-allowed' || event.error === 'service-not-allowed') {
-      addLogLine('Microphone permission was denied. Please allow microphone access.', 'system');
+      const message = 'Microphone permission was denied. Please allow microphone access.';
+      addLogLine(message, 'system');
+      showAlert(message);
     } else if (event.error === 'no-speech') {
-      addLogLine("I didn't hear anything. Try again.", 'system');
+      const message = "I didn't hear anything. Try again.";
+      addLogLine(message, 'system');
+      showAlert(message);
     } else {
-      addLogLine(`Recognition error: ${event.error}`, 'system');
+      const message = `Recognition error: ${event.error}`;
+      addLogLine(message, 'system');
+      showAlert(message);
     }
   };
 
@@ -224,12 +243,16 @@ if (SpeechRecognitionAPI) {
     }
   };
 } else {
-  addLogLine('Speech recognition is not supported in this browser. Try Chrome or Edge.', 'system');
+  const message = 'Speech recognition is not supported in this browser. Try Chrome or Edge.';
+  addLogLine(message, 'system');
+  showAlert(message);
 }
 
 coreButton.addEventListener('click', () => {
   if (!recognition) {
-    addLogLine('Speech recognition is not supported in this browser. Try Chrome or Edge.', 'system');
+    const message = 'Speech recognition is not supported in this browser. Try Chrome or Edge.';
+    addLogLine(message, 'system');
+    showAlert(message);
     return;
   }
 
@@ -246,10 +269,11 @@ coreButton.addEventListener('click', () => {
   }
 
   try {
-    recognition.abort();
     recognition.start();
   } catch (e) {
-    addLogLine('Unable to start the microphone. Please try again.', 'system');
+    const message = 'Unable to start the microphone. Please try again.';
+    addLogLine(message, 'system');
+    showAlert(message);
   }
 });
 
