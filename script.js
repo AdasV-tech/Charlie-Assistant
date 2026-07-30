@@ -228,7 +228,10 @@ if (SpeechRecognitionAPI) {
 }
 
 coreButton.addEventListener('click', () => {
-  if (!recognition) return;
+  if (!recognition) {
+    addLogLine('Speech recognition is not supported in this browser. Try Chrome or Edge.', 'system');
+    return;
+  }
 
   // If Charlie is speaking, treat a tap as "stop talking".
   if (synth.speaking) {
@@ -243,9 +246,10 @@ coreButton.addEventListener('click', () => {
   }
 
   try {
+    recognition.abort();
     recognition.start();
   } catch (e) {
-    // start() throws if called twice in a row too quickly — safe to ignore.
+    addLogLine('Unable to start the microphone. Please try again.', 'system');
   }
 });
 
