@@ -146,6 +146,12 @@ html, body {
   color: var(--text-dim);
 }
 
+.topbar-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
 .clock {
   font-family: var(--font-display);
   font-size: 13px;
@@ -153,6 +159,22 @@ html, body {
   letter-spacing: 1px;
   text-shadow: 0 0 8px rgba(62, 230, 255, 0.5);
 }
+
+.settings-btn {
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: var(--panel);
+  color: var(--text-dim);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: border-color 0.2s ease, color 0.2s ease;
+}
+.settings-btn svg { width: 17px; height: 17px; stroke: currentColor; }
+.settings-btn:hover { color: var(--cyan); border-color: var(--cyan-dim); }
 
 /* ---------- Core stage ---------- */
 .core-stage {
@@ -438,8 +460,10 @@ body[data-state="speaking"] .status-label { color: var(--cyan); }
   border-radius: 6px;
   cursor: pointer;
   white-space: nowrap;
+  width: 100%;
+  margin-top: 4px;
 }
-..reset-btn:hover { background: rgba(255, 92, 108, 0.1); }
+.reset-btn:hover { background: rgba(255, 92, 108, 0.1); }
 
 .version-badge {
   position: fixed;
@@ -532,4 +556,396 @@ body[data-state="speaking"] .status-label { color: var(--cyan); }
   .core-rings, .ring-mid, .core-glow, .waveform span {
     animation: none !important;
   }
+}
+
+/* =========================================================
+   CHARLIE V2 ADDITIONS
+   Tab navigation, food scanner, dashboard, profile, and the
+   settings drawer. Reuses the same HUD palette/tokens defined
+   at the top of this file.
+   ========================================================= */
+
+/* ---------- Tab bar ---------- */
+.tabbar {
+  display: flex;
+  gap: 6px;
+  margin-top: 16px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 4px;
+  background: rgba(12, 20, 29, 0.5);
+}
+
+.tab-btn {
+  flex: 1;
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  font-family: var(--font-display);
+  font-size: 10px;
+  letter-spacing: 1.5px;
+  padding: 9px 4px;
+  border-radius: 7px;
+  cursor: pointer;
+  transition: background 0.2s ease, color 0.2s ease;
+}
+
+.tab-btn:hover { color: var(--text); }
+
+.tab-btn.active {
+  background: rgba(62, 230, 255, 0.12);
+  color: var(--cyan);
+  box-shadow: inset 0 0 0 1px rgba(62, 230, 255, 0.35);
+}
+
+.tab-panel { display: none; flex-direction: column; flex: 1; }
+.tab-panel.active { display: flex; }
+
+/* ---------- Shared panel card (scanner / dashboard / profile) ---------- */
+.panel-card {
+  margin-top: 20px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: rgba(12, 20, 29, 0.6);
+  padding: 18px 16px 22px;
+  flex: 1;
+}
+
+.panel-title {
+  font-family: var(--font-display);
+  font-size: 15px;
+  letter-spacing: 2px;
+  color: var(--cyan);
+  margin: 0 0 6px;
+  text-shadow: 0 0 8px rgba(62, 230, 255, 0.35);
+}
+
+.panel-sub {
+  color: var(--text-dim);
+  font-size: 14px;
+  margin: 0 0 18px;
+  line-height: 1.5;
+}
+
+.section-heading {
+  font-family: var(--font-display);
+  font-size: 11px;
+  letter-spacing: 2px;
+  color: var(--text-dim);
+  margin: 22px 0 10px;
+}
+
+.primary-btn {
+  background: var(--cyan);
+  border: none;
+  color: var(--bg);
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 11px;
+  letter-spacing: 1.5px;
+  padding: 10px 14px;
+  border-radius: 7px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.primary-btn:hover { box-shadow: 0 0 16px rgba(62, 230, 255, 0.5); }
+
+.secondary-btn {
+  background: none;
+  border: 1px solid var(--line);
+  color: var(--text-dim);
+  font-family: var(--font-display);
+  font-size: 10px;
+  letter-spacing: 1px;
+  padding: 10px 14px;
+  border-radius: 7px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.secondary-btn:hover { color: var(--cyan); border-color: var(--cyan-dim); }
+
+/* ---------- Food scanner ---------- */
+.scanner-row { display: flex; gap: 10px; margin-bottom: 14px; flex-wrap: wrap; }
+
+.file-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--cyan);
+  color: var(--bg);
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 12px;
+  letter-spacing: 1px;
+  padding: 11px 16px;
+  border-radius: 8px;
+  cursor: pointer;
+  flex: 1;
+  justify-content: center;
+}
+.file-btn:hover { box-shadow: 0 0 16px rgba(62, 230, 255, 0.5); }
+
+.photo-preview {
+  margin-bottom: 14px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  overflow: hidden;
+  max-height: 260px;
+  display: flex;
+  justify-content: center;
+  background: var(--bg);
+}
+.photo-preview img { width: 100%; object-fit: cover; max-height: 260px; }
+
+.scan-search { display: flex; flex-direction: column; gap: 6px; margin-bottom: 14px; }
+.scan-search label {
+  font-family: var(--font-display);
+  font-size: 9px;
+  letter-spacing: 2px;
+  color: var(--text-dim);
+}
+.scan-search input {
+  background: var(--bg);
+  border: 1px solid var(--line);
+  color: var(--text);
+  border-radius: 7px;
+  padding: 10px;
+  font-family: var(--font-body);
+  font-size: 15px;
+}
+.scan-search .primary-btn { margin-top: 4px; }
+
+.quick-foods {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  margin-bottom: 16px;
+}
+.quick-food-btn {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  color: var(--text-dim);
+  font-family: var(--font-body);
+  font-size: 12px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  cursor: pointer;
+}
+.quick-food-btn:hover { color: var(--cyan); border-color: var(--cyan-dim); }
+
+.food-result {
+  border: 1px solid var(--cyan-dim);
+  border-radius: 10px;
+  padding: 16px;
+  margin-bottom: 14px;
+  background: rgba(62, 230, 255, 0.05);
+}
+.food-result h3 {
+  font-family: var(--font-display);
+  color: var(--cyan);
+  font-size: 15px;
+  letter-spacing: 1px;
+  margin: 0 0 4px;
+}
+.food-result .score-line {
+  font-family: var(--font-display);
+  font-size: 22px;
+  color: var(--text);
+  margin: 6px 0 12px;
+}
+.food-result .score-line span { color: var(--cyan); }
+.food-result .food-nutrition {
+  font-size: 13px;
+  color: var(--text-dim);
+  margin-bottom: 12px;
+}
+.food-result ul { margin: 0 0 12px; padding-left: 18px; font-size: 14px; }
+.food-result ul.good li { color: #8ff0b0; }
+.food-result ul.bad li { color: var(--amber); }
+.food-result .recommendation {
+  font-style: italic;
+  color: var(--text);
+  border-top: 1px solid var(--line);
+  padding-top: 10px;
+}
+
+.disclaimer {
+  font-size: 11px;
+  color: var(--text-dim);
+  line-height: 1.5;
+  margin-top: 10px;
+}
+
+/* ---------- Dashboard ---------- */
+.focus-box {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 14px;
+  background: rgba(62, 230, 255, 0.05);
+  margin-bottom: 16px;
+}
+.focus-label {
+  font-family: var(--font-display);
+  font-size: 9px;
+  letter-spacing: 2px;
+  color: var(--cyan);
+  margin-bottom: 6px;
+}
+.focus-text { font-size: 15px; color: var(--text); }
+
+.mode-row { display: flex; gap: 10px; flex-wrap: wrap; }
+.mode-btn {
+  flex: 1;
+  min-width: 150px;
+  background: var(--panel);
+  border: 1px solid var(--cyan-dim);
+  color: var(--cyan);
+  font-family: var(--font-display);
+  font-size: 11px;
+  letter-spacing: 1px;
+  padding: 12px 10px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+.mode-btn:hover { box-shadow: 0 0 14px rgba(62, 230, 255, 0.3); }
+
+.timer-box {
+  margin-top: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border: 1px solid var(--amber);
+  border-radius: 10px;
+  padding: 12px 14px;
+  background: rgba(255, 180, 84, 0.08);
+  font-family: var(--font-display);
+}
+.timer-box #timerLabel { font-size: 11px; letter-spacing: 1.5px; color: var(--amber); }
+.timer-box #timerReadout { font-size: 20px; color: var(--text); }
+.timer-box button {
+  background: none;
+  border: 1px solid var(--red);
+  color: var(--red);
+  font-family: var(--font-display);
+  font-size: 10px;
+  padding: 6px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.suggestion-add { display: flex; gap: 8px; }
+.suggestion-add input {
+  flex: 1;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  color: var(--text);
+  border-radius: 7px;
+  padding: 9px 10px;
+  font-family: var(--font-body);
+  font-size: 14px;
+}
+
+.suggestion-list { list-style: none; margin: 12px 0 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.suggestion-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 10px 12px;
+  font-size: 14px;
+  background: var(--panel);
+}
+.suggestion-list li button {
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  cursor: pointer;
+  font-size: 16px;
+  line-height: 1;
+}
+.suggestion-list li button:hover { color: var(--red); }
+.suggestion-empty { color: var(--text-dim); font-size: 13px; font-style: italic; }
+
+/* ---------- Profile ---------- */
+.profile-form { display: flex; flex-direction: column; gap: 10px; }
+.profile-form label {
+  font-family: var(--font-display);
+  font-size: 9px;
+  letter-spacing: 2px;
+  color: var(--text-dim);
+  margin-top: 4px;
+}
+.profile-form input,
+.profile-form select,
+.profile-form textarea {
+  background: var(--bg);
+  border: 1px solid var(--line);
+  color: var(--text);
+  border-radius: 7px;
+  padding: 10px;
+  font-family: var(--font-body);
+  font-size: 15px;
+  resize: vertical;
+}
+.profile-form .primary-btn { margin-top: 8px; }
+
+.profile-summary {
+  margin-top: 18px;
+  border-top: 1px solid var(--line);
+  padding-top: 16px;
+  color: var(--text);
+  font-size: 14px;
+  line-height: 1.6;
+  white-space: pre-line;
+}
+
+/* ---------- Settings drawer ---------- */
+.drawer-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(6, 10, 16, 0.75);
+  z-index: 11;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+}
+.drawer-overlay.hidden { display: none; }
+
+.drawer-box {
+  width: 100%;
+  max-width: 480px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-bottom: none;
+  border-radius: 14px 14px 0 0;
+  padding: 18px 20px 24px;
+  box-shadow: 0 -10px 40px rgba(0, 0, 0, 0.5);
+}
+
+.drawer-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-family: var(--font-display);
+  font-size: 12px;
+  letter-spacing: 2px;
+  color: var(--cyan);
+  margin-bottom: 14px;
+}
+.drawer-header button {
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  font-size: 16px;
+  cursor: pointer;
+}
+
+.drawer-box .control-group { margin-bottom: 12px; }
+
+/* ---------- Mobile tweaks ---------- */
+@media (max-width: 420px) {
+  .tab-btn { font-size: 9px; padding: 9px 2px; }
+  .mode-row { flex-direction: column; }
+  .scanner-row { flex-direction: column; }
 }
