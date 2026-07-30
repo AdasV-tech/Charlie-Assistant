@@ -234,6 +234,21 @@ function sleepCharlie() {
   addLogLine('Charlie is sleeping.', 'system');
 }
 
+// Charlie only reacts when directly addressed by name — this stops the
+// "always listening" mic from answering random background conversation.
+function containsWakeWord(transcript) {
+  return /\bcharlie\b/i.test(transcript);
+}
+
+// Strips a leading/trailing "(hey/hi/hello/ok/okay) Charlie" from the
+// transcript so the remainder can be matched against the command list.
+function stripWakeWord(transcript) {
+  return transcript
+    .replace(/^\s*(hey|hi|hello|ok|okay)?\s*,?\s*charlie\s*,?\s*/i, '')
+    .replace(/\s*,?\s*charlie\s*[.!?]?\s*$/i, '')
+    .trim();
+}
+
 // Restarts the mic so Charlie keeps listening between phrases — recognition
 // only ever fully stops when the user taps the core (sleepCharlie).
 function startListening() {
@@ -258,12 +273,27 @@ if (SpeechRecognitionAPI) {
 
   recognition.onresult = (event) => {
     const transcript = event.results[0][0].transcript.trim();
+
+    // The mic is always on while awake, but Charlie should only react when
+    // directly addressed — ignore anything that doesn't include the wake
+    // word ("Charlie" / "hey Charlie") and keep listening quietly.
+    if (!containsWakeWord(transcript)) {
+      return;
+    }
+
     addLogLine(transcript, 'user');
     setState('thinking');
     isProcessing = true;
+    const command = stripWakeWord(transcript);
     // Small delay so the "thinking" state is visible before Charlie replies —
     // this also leaves room to plug in a slower AI backend later.
-    setTimeout(() => handleCommand(transcript), 500);
+    setTimeout(() => {
+      if (!command) {
+        speak(`Yes ${getUserLabel()}? I'm listening.`);
+      } else {
+        handleCommand(command);
+      }
+    }, 500);
   };
 
   recognition.onerror = (event) => {
@@ -354,12 +384,8 @@ const commands = [
     respond: () => `Today is ${new Date().toLocaleDateString([], { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}.`
   },
   {
-    patterns: ['hello charlie', 'hey charlie', 'hi charlie'],
-    respond: () => `Hello ${getUserLabel()}, how can I help?`
-  },
-  {
     patterns: ['hello', 'hi there', 'hey'],
-    respond: () => `Hi ${getUserLabel()}! What can I do for you?`
+    respond: () => `Hello ${getUserLabel()}, how can I help?`
   },
   {
     patterns: ['what can you do', 'what are your features', 'help me', 'help'],
