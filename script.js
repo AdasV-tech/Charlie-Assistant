@@ -171,15 +171,19 @@ function speak(text) {
 
   utterance.onstart = () => setState('speaking');
   utterance.onend = () => {
+    isProcessing = false;
     if (isAwake) {
       setState('awake');
+      startListening();
     } else {
       setState('sleeping');
     }
   };
   utterance.onerror = () => {
+    isProcessing = false;
     if (isAwake) {
       setState('awake');
+      startListening();
     } else {
       setState('sleeping');
     }
@@ -210,15 +214,19 @@ const SpeechRecognitionAPI = window.SpeechRecognition || window.webkitSpeechReco
 let recognition = null;
 let isListening = false;
 let isAwake = false;
+// True while a heard phrase is being handled (thinking + speaking) so the
+// continuous-listening restart doesn't kick in mid-response.
+let isProcessing = false;
 
 function wakeCharlie() {
   isAwake = true;
   setState('awake');
-  addLogLine('Charlie is awake. Tap the core again to sleep.', 'system');
+  addLogLine("Charlie is awake and listening. Tap the core to sleep.", 'system');
 }
 
 function sleepCharlie() {
   isAwake = false;
+  isProcessing = false;
   if (recognition && isListening) {
     recognition.stop();
   }
@@ -226,10 +234,21 @@ function sleepCharlie() {
   addLogLine('Charlie is sleeping.', 'system');
 }
 
+// Restarts the mic so Charlie keeps listening between phrases — recognition
+// only ever fully stops when the user taps the core (sleepCharlie).
+function startListening() {
+  if (!recognition || isListening || isProcessing || synth.speaking) return;
+  try {
+    recognition.start();
+  } catch (e) {
+    // Already starting/started — safe to ignore.
+  }
+}
+
 if (SpeechRecognitionAPI) {
   recognition = new SpeechRecognitionAPI();
   recognition.lang = 'en-US';
-  recognition.continuous = false;   // stop automatically after one phrase
+  recognition.continuous = false;   // one phrase per session, but we auto-restart below
   recognition.interimResults = false;
 
   recognition.onstart = () => {
@@ -241,6 +260,7 @@ if (SpeechRecognitionAPI) {
     const transcript = event.results[0][0].transcript.trim();
     addLogLine(transcript, 'user');
     setState('thinking');
+    isProcessing = true;
     // Small delay so the "thinking" state is visible before Charlie replies —
     // this also leaves room to plug in a slower AI backend later.
     setTimeout(() => handleCommand(transcript), 500);
@@ -248,23 +268,23 @@ if (SpeechRecognitionAPI) {
 
   recognition.onerror = (event) => {
     isListening = false;
-    if (isAwake) {
-      setState('awake');
-    } else {
-      setState('sleeping');
-    }
     if (event.error === 'not-allowed' || event.error === 'service-not-allowed') {
       const message = 'Microphone permission was denied. Please allow microphone access.';
       addLogLine(message, 'system');
       showAlert(message);
-    } else if (event.error === 'no-speech') {
-      const message = "I didn't hear anything. Try again.";
-      addLogLine(message, 'system');
-      showAlert(message);
+      isAwake = false;
+    } else if (event.error === 'no-speech' || event.error === 'aborted') {
+      // Expected while always-listening (silence timeout or a manual stop) —
+      // no need to alert the user, onend below will restart if still awake.
     } else {
       const message = `Recognition error: ${event.error}`;
       addLogLine(message, 'system');
       showAlert(message);
+    }
+    if (isAwake) {
+      setState('awake');
+    } else {
+      setState('sleeping');
     }
   };
 
@@ -272,7 +292,11 @@ if (SpeechRecognitionAPI) {
     isListening = false;
     if (isAwake) {
       setState('awake');
-    } else if (document.body.getAttribute('data-state') === 'listening') {
+      // Keep listening for "hey Charlie" / follow-up commands until the
+      // core button is pressed — never go back to sleep just because a
+      // response finished.
+      startListening();
+    } else {
       setState('sleeping');
     }
   };
@@ -290,30 +314,19 @@ coreButton.addEventListener('click', () => {
     return;
   }
 
-  // If Charlie is speaking, treat a tap as "stop talking".
+  // If Charlie is speaking, treat a tap as "stop talking" rather than sleep.
   if (synth.speaking) {
     synth.cancel();
     return;
   }
 
-  if (isListening) {
+  if (isAwake) {
     sleepCharlie();
     return;
   }
 
-  if (!isAwake) {
-    wakeCharlie();
-    try {
-      recognition.start();
-    } catch (e) {
-      const message = 'Unable to start the microphone. Please try again.';
-      addLogLine(message, 'system');
-      showAlert(message);
-    }
-    return;
-  }
-
-  sleepCharlie();
+  wakeCharlie();
+  startListening();
 });
 
 /* ---------------------------------------------------------
