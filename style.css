@@ -439,7 +439,24 @@ body[data-state="speaking"] .status-label { color: var(--cyan); }
   cursor: pointer;
   white-space: nowrap;
 }
-.reset-btn:hover { background: rgba(255, 92, 108, 0.1); }
+..reset-btn:hover { background: rgba(255, 92, 108, 0.1); }
+
+.version-badge {
+  position: fixed;
+  right: 14px;
+  bottom: 14px;
+  z-index: 12;
+  background: rgba(0, 0, 0, 0.55);
+  color: var(--text-dim);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 999px;
+  padding: 8px 12px;
+  font-family: var(--font-display);
+  font-size: 11px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  pointer-events: none;
+}
 
 /* ---------- Name capture modal ---------- */
 .modal-overlay {
