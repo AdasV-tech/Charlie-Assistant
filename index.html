@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Charlie Assistant</title>
+
+  <!-- Google Fonts: a technical display face + a clean body face -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700;900&family=Rajdhani:wght@400;500;600;700&display=swap" rel="stylesheet" />
+
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+  <!-- Background grid / scanline layer, purely decorative -->
+  <div class="bg-grid"></div>
+  <div class="bg-vignette"></div>
+
+  <main class="app">
+
+    <!-- Top bar: assistant name + connection/status readout -->
+    <header class="topbar">
+      <div class="brand">
+        <span class="brand-mark">C</span>
+        <span class="brand-name">CHARLIE<span class="brand-sub">ASSISTANT</span></span>
+      </div>
+      <div class="clock" id="clockReadout">00:00:00</div>
+    </header>
+
+    <!-- Center stage: the glowing core + status ring -->
+    <section class="core-stage">
+      <div class="core-wrap" id="coreWrap">
+        <svg class="core-rings" viewBox="0 0 400 400" aria-hidden="true">
+          <circle class="ring ring-outer" cx="200" cy="200" r="180" />
+          <circle class="ring ring-mid" cx="200" cy="200" r="150" />
+          <circle class="ring ring-inner" cx="200" cy="200" r="120" />
+          <!-- tick marks around the outer ring -->
+          <g class="ticks" id="tickGroup"></g>
+        </svg>
+
+        <button class="core-button" id="coreButton" aria-label="Activate microphone">
+          <span class="core-glow"></span>
+          <svg class="mic-icon" viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M12 14a3 3 0 0 0 3-3V6a3 3 0 0 0-6 0v5a3 3 0 0 0 3 3z" />
+            <path d="M19 11a7 7 0 0 1-14 0" fill="none" stroke-width="1.6" />
+            <path d="M12 18v3" stroke-width="1.6" />
+          </svg>
+        </button>
+      </div>
+
+      <!-- Waveform animation, only lively while listening/speaking -->
+      <div class="waveform" id="waveform">
+        <span></span><span></span><span></span><span></span><span></span>
+        <span></span><span></span><span></span><span></span><span></span>
+        <span></span><span></span><span></span>
+      </div>
+
+      <div class="status-label" id="statusLabel">SLEEPING</div>
+    </section>
+
+    <!-- Transcript / conversation log -->
+    <section class="console">
+      <div class="console-header">
+        <span>TRANSCRIPT</span>
+        <button class="clear-btn" id="clearBtn">CLEAR</button>
+      </div>
+      <div class="console-log" id="consoleLog">
+        <div class="log-line log-system">Charlie is powered down. Tap the core to wake me up.</div>
+      </div>
+    </section>
+
+    <!-- Footer controls: settings toggles -->
+    <section class="controls">
+      <div class="control-group">
+        <label for="voiceSelect">VOICE</label>
+        <select id="voiceSelect"></select>
+      </div>
+      <div class="control-group">
+        <label for="rateRange">RATE</label>
+        <input type="range" id="rateRange" min="0.5" max="1.5" step="0.1" value="1" />
+      </div>
+      <div class="control-group">
+        <label for="pitchRange">PITCH</label>
+        <input type="range" id="pitchRange" min="0" max="2" step="0.1" value="1" />
+      </div>
+      <button class="reset-btn" id="resetMemoryBtn">FORGET ME</button>
+    </section>
+
+  </main>
+
+  <!-- Name capture modal: shown once on first run -->
+  <div class="modal-overlay" id="nameModal">
+    <div class="modal-box">
+      <h2>Hello, I'm Charlie.</h2>
+      <p>What should I call you?</p>
+      <input type="text" id="nameInput" placeholder="Type your name..." maxlength="24" />
+      <button id="nameSubmit">CONFIRM</button>
+    </div>
+  </div>
+
+  <script src="script.js"></script>
+</body>
+</html>
