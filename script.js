@@ -170,8 +170,20 @@ function speak(text) {
   utterance.pitch = parseFloat(pitchRange.value);
 
   utterance.onstart = () => setState('speaking');
-  utterance.onend = () => setState('sleeping');
-  utterance.onerror = () => setState('sleeping');
+  utterance.onend = () => {
+    if (isAwake) {
+      setState('awake');
+    } else {
+      setState('sleeping');
+    }
+  };
+  utterance.onerror = () => {
+    if (isAwake) {
+      setState('awake');
+    } else {
+      setState('sleeping');
+    }
+  };
 
   addLogLine(text, 'charlie');
   synth.speak(utterance);
@@ -197,6 +209,22 @@ pitchRange.addEventListener('change', () => {
 const SpeechRecognitionAPI = window.SpeechRecognition || window.webkitSpeechRecognition;
 let recognition = null;
 let isListening = false;
+let isAwake = false;
+
+function wakeCharlie() {
+  isAwake = true;
+  setState('awake');
+  addLogLine('Charlie is awake. Tap the core again to sleep.', 'system');
+}
+
+function sleepCharlie() {
+  isAwake = false;
+  if (recognition && isListening) {
+    recognition.stop();
+  }
+  setState('sleeping');
+  addLogLine('Charlie is sleeping.', 'system');
+}
 
 if (SpeechRecognitionAPI) {
   recognition = new SpeechRecognitionAPI();
@@ -220,7 +248,11 @@ if (SpeechRecognitionAPI) {
 
   recognition.onerror = (event) => {
     isListening = false;
-    setState('sleeping');
+    if (isAwake) {
+      setState('awake');
+    } else {
+      setState('sleeping');
+    }
     if (event.error === 'not-allowed' || event.error === 'service-not-allowed') {
       const message = 'Microphone permission was denied. Please allow microphone access.';
       addLogLine(message, 'system');
@@ -238,7 +270,9 @@ if (SpeechRecognitionAPI) {
 
   recognition.onend = () => {
     isListening = false;
-    if (document.body.getAttribute('data-state') === 'listening') {
+    if (isAwake) {
+      setState('awake');
+    } else if (document.body.getAttribute('data-state') === 'listening') {
       setState('sleeping');
     }
   };
@@ -259,22 +293,27 @@ coreButton.addEventListener('click', () => {
   // If Charlie is speaking, treat a tap as "stop talking".
   if (synth.speaking) {
     synth.cancel();
-    setState('sleeping');
     return;
   }
 
   if (isListening) {
-    recognition.stop();
+    sleepCharlie();
     return;
   }
 
-  try {
-    recognition.start();
-  } catch (e) {
-    const message = 'Unable to start the microphone. Please try again.';
-    addLogLine(message, 'system');
-    showAlert(message);
+  if (!isAwake) {
+    wakeCharlie();
+    try {
+      recognition.start();
+    } catch (e) {
+      const message = 'Unable to start the microphone. Please try again.';
+      addLogLine(message, 'system');
+      showAlert(message);
+    }
+    return;
   }
+
+  sleepCharlie();
 });
 
 /* ---------------------------------------------------------
@@ -393,7 +432,10 @@ const commands = [
   },
   {
     patterns: ['stop', 'stop listening', 'go to sleep', 'sleep'],
-    respond: () => { synth.cancel(); return 'Going to sleep. Tap the core to wake me.'; }
+    respond: () => {
+      isAwake = false;
+      return 'Going to sleep. Tap the core to wake me.';
+    }
   },
   {
     patterns: ['are you an ai', 'are you a robot'],
