@@ -477,10 +477,104 @@ const commands = [
     }
   },
   {
+    patterns: ['turn off', 'power off', 'shut down', 'power down'],
+    respond: () => {
+      isAwake = false;
+      return 'Powering down. Tap the core when you need me again.';
+    }
+  },
+  {
     patterns: ['are you an ai', 'are you a robot'],
     respond: () => "I'm a simple assistant built with your browser's speech tools — no external AI needed."
+  },
+  {
+    patterns: ['are you sentient', 'do you have feelings', 'are you alive'],
+    respond: () => randomFrom([
+      "I don't have feelings, but I do have opinions about good code formatting.",
+      "As alive as a bit of JavaScript can be, which is to say: not very.",
+      "I'm just pattern matching your words, but I like to think I do it with charm."
+    ])
+  },
+  {
+    patterns: ['who made you', 'who created you', 'who built you'],
+    respond: () => "I was built with plain HTML, CSS, and JavaScript — no framework, no server, just a browser and some code."
+  },
+  {
+    patterns: ['what is the meaning of life', "what's the meaning of life"],
+    respond: () => 'Forty-two. Though I suspect the real answer involves good coffee and better sleep.'
+  },
+  {
+    patterns: ['favorite color', 'favourite color', 'what color do you like'],
+    respond: () => randomFrom(['I like a nice terminal green.', 'Deep blue, like a clear night sky.', 'Amber — reminds me of my own glow.'])
+  },
+  {
+    patterns: ['favorite food', 'favourite food', 'what do you eat'],
+    respond: () => "I run on electricity, so I'd say my favorite meal is a fully charged battery."
+  },
+  {
+    patterns: ['sing a song', 'sing me a song', 'sing'],
+    respond: () => "La la la, I'm a voice assistant, not a singer — but I appreciate the enthusiasm."
+  },
+  {
+    patterns: ['will you marry me'],
+    respond: () => "That's sweet, but I think our relationship works best as assistant and human."
+  },
+  {
+    patterns: ['tell me a fact', 'random fact', 'tell me something interesting'],
+    respond: () => randomFrom([
+      'Honey never spoils — archaeologists have found edible honey in ancient Egyptian tombs.',
+      'A group of flamingos is called a "flamboyance."',
+      "Bananas are berries, but strawberries aren't.",
+      'Octopuses have three hearts and blue blood.',
+      'The first computer bug was an actual moth stuck in a relay in 1947.'
+    ])
+  },
+  {
+    patterns: ['motivate me', 'inspire me', 'give me a quote'],
+    respond: () => randomFrom([
+      "Small steps every day still get you there.",
+      "The best time to start was yesterday. The next best time is now.",
+      "Progress, not perfection.",
+      "You don't have to see the whole staircase, just take the first step."
+    ])
+  },
+  {
+    patterns: ["what's the weather", 'what is the weather', 'is it raining'],
+    respond: () => "I can't check live weather yet since I don't have internet access, but it's always a good day to ask a human nearby."
+  },
+  {
+    patterns: ['what is', 'whats', "what's"],
+    respond: (transcript) => {
+      const answer = solveMathQuestion(transcript);
+      return answer !== null ? answer : "I don't have an answer for that yet, but you can teach me more commands in script.js.";
+    }
   }
 ];
+
+// Answers simple spoken arithmetic like "what is 5 plus 3" or "what's 10
+// times 4". Returns null if the phrase isn't a recognizable math question.
+function solveMathQuestion(transcript) {
+  const lower = transcript.toLowerCase();
+  const match = lower.match(/(-?\d+(?:\.\d+)?)\s*(plus|minus|times|multiplied by|divided by|over)\s*(-?\d+(?:\.\d+)?)/);
+  if (!match) return null;
+
+  const a = parseFloat(match[1]);
+  const b = parseFloat(match[3]);
+  let result;
+  switch (match[2]) {
+    case 'plus': result = a + b; break;
+    case 'minus': result = a - b; break;
+    case 'times':
+    case 'multiplied by': result = a * b; break;
+    case 'divided by':
+    case 'over':
+      if (b === 0) return "I can't divide by zero.";
+      result = a / b;
+      break;
+    default: return null;
+  }
+  return `That's ${result}.`;
+}
 
 // Very small helper to pull a name out of phrases like
 // "my name is Adas" / "call me Adas".
