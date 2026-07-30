@@ -121,7 +121,22 @@
 
         <div class="food-result hidden" id="foodResult"></div>
 
+        <div class="save-row hidden" id="saveRow">
+          <div class="save-row-field">
+            <label for="mealNameInput">MEAL NAME (OPTIONAL)</label>
+            <input type="text" id="mealNameInput" placeholder="e.g. Lunch with the team" maxlength="40" />
+          </div>
+          <button class="primary-btn" id="saveMealBtn" type="button">💾 SAVE TO HISTORY</button>
+        </div>
+
         <p class="disclaimer">Food analysis is an estimate and may not be perfectly accurate. This prototype matches a name you provide against a small local food table — it does not use image recognition.</p>
+
+        <h3 class="section-heading">FOOD HISTORY</h3>
+        <div class="history-toolbar">
+          <span id="historyCount">0 meals saved</span>
+          <button class="secondary-btn" id="clearHistoryBtn" type="button">CLEAR HISTORY</button>
+        </div>
+        <ul class="history-list" id="foodHistoryList"></ul>
       </div>
     </section>
 

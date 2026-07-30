@@ -515,6 +515,592 @@ function boot() {
     nameModal.classList.add('hidden');
     addLogLine(`Welcome back, ${memory.userName}. Tap the core to talk to me.`, 'system');
   }
+
+  // V2 systems — each is independent and safe to init in any order.
+  initTabs();
+  initSettingsDrawer();
+  initFoodScanner();
+  initProfile();
+  initDashboard();
 }
 
 boot();
+
+/* =========================================================
+   8. TAB NAVIGATION
+   Four modes share one page: Assistant / Scanner / Dashboard /
+   Profile. Only one .tab-panel is visible at a time, driven by
+   the data-tab attribute on each .tab-btn.
+   ========================================================= */
+function switchTab(tabName) {
+  document.querySelectorAll('.tab-btn').forEach((btn) => {
+    btn.classList.toggle('active', btn.dataset.tab === tabName);
+  });
+  document.querySelectorAll('.tab-panel').forEach((panel) => {
+    panel.classList.toggle('active', panel.dataset.tabPanel === tabName);
+  });
+  // Refresh dashboard text (time-of-day greeting) whenever it's opened.
+  if (tabName === 'dashboard') renderDashboard();
+  if (tabName === 'profile') renderProfileSummary();
+}
+
+function initTabs() {
+  document.querySelectorAll('.tab-btn').forEach((btn) => {
+    btn.addEventListener('click', () => switchTab(btn.dataset.tab));
+  });
+}
+
+/* =========================================================
+   9. SETTINGS DRAWER
+   The voice/rate/pitch/forget-me controls now live in a
+   slide-up drawer instead of cluttering the main screen.
+   ========================================================= */
+function initSettingsDrawer() {
+  const settingsBtn = document.getElementById('settingsBtn');
+  const drawerOverlay = document.getElementById('drawerOverlay');
+  const drawerCloseBtn = document.getElementById('drawerCloseBtn');
+
+  settingsBtn.addEventListener('click', () => drawerOverlay.classList.remove('hidden'));
+  drawerCloseBtn.addEventListener('click', () => drawerOverlay.classList.add('hidden'));
+  // Clicking the dim backdrop (but not the drawer itself) also closes it.
+  drawerOverlay.addEventListener('click', (e) => {
+    if (e.target === drawerOverlay) drawerOverlay.classList.add('hidden');
+  });
+}
+
+/* =========================================================
+   10. FOOD SCANNER V2
+   Photo capture/upload for the user's own reference, plus a
+   name-based lookup against FOOD_DATABASE (see data/foods.js).
+   This is intentionally NOT computer vision — see the on-page
+   disclaimer — but every piece of it is real and functional.
+   V2 adds full macros, five separate scores, and a saved meal
+   history (persisted to localStorage).
+   ========================================================= */
+const FOOD_HISTORY_KEY = 'charlie_food_history_v1';
+
+function loadFoodHistory() {
+  const raw = localStorage.getItem(FOOD_HISTORY_KEY);
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch (e) {
+    return [];
+  }
+}
+
+function saveFoodHistory(list) {
+  localStorage.setItem(FOOD_HISTORY_KEY, JSON.stringify(list));
+}
+
+let foodHistory = loadFoodHistory();
+let currentScannedFood = null; // the food currently shown in the result card, so Save knows what to store
+
+function initFoodScanner() {
+  const photoInput = document.getElementById('foodPhotoInput');
+  const previewWrap = document.getElementById('photoPreviewWrap');
+  const previewImg = document.getElementById('photoPreview');
+  const clearScanBtn = document.getElementById('clearScanBtn');
+  const searchInput = document.getElementById('foodSearchInput');
+  const suggestionsList = document.getElementById('foodSuggestions');
+  const analyzeBtn = document.getElementById('analyzeFoodBtn');
+  const quickFoodsWrap = document.getElementById('quickFoods');
+  const resultBox = document.getElementById('foodResult');
+  const saveRow = document.getElementById('saveRow');
+  const mealNameInput = document.getElementById('mealNameInput');
+  const saveMealBtn = document.getElementById('saveMealBtn');
+  const clearHistoryBtn = document.getElementById('clearHistoryBtn');
+
+  // Populate the <datalist> and the quick-pick buttons from the food DB.
+  FOOD_DATABASE.forEach((food) => {
+    const opt = document.createElement('option');
+    opt.value = food.name;
+    suggestionsList.appendChild(opt);
+
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'quick-food-btn';
+    btn.textContent = food.name;
+    btn.addEventListener('click', () => {
+      searchInput.value = food.name;
+      renderFoodResult(food);
+    });
+    quickFoodsWrap.appendChild(btn);
+  });
+
+  // Photo capture / upload — shows a local preview only (never uploaded anywhere).
+  photoInput.addEventListener('change', () => {
+    const file = photoInput.files && photoInput.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      previewImg.src = e.target.result;
+      previewWrap.classList.remove('hidden');
+    };
+    reader.readAsDataURL(file);
+  });
+
+  clearScanBtn.addEventListener('click', () => {
+    photoInput.value = '';
+    previewImg.src = '';
+    previewWrap.classList.add('hidden');
+    searchInput.value = '';
+    resultBox.classList.add('hidden');
+    resultBox.innerHTML = '';
+    saveRow.classList.add('hidden');
+    mealNameInput.value = '';
+    currentScannedFood = null;
+  });
+
+  analyzeBtn.addEventListener('click', () => {
+    const food = findFoodMatch(searchInput.value);
+    if (!food) {
+      resultBox.classList.remove('hidden');
+      resultBox.innerHTML = `<p>I couldn't find "${escapeHtml(searchInput.value)}" in my local food table yet. Try one of the quick-pick buttons above, or a simpler name like "chicken" or "rice".</p>`;
+      saveRow.classList.add('hidden');
+      currentScannedFood = null;
+      return;
+    }
+    renderFoodResult(food);
+  });
+
+  // Allow pressing Enter in the search box instead of always tapping ANALYZE.
+  searchInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') analyzeBtn.click();
+  });
+
+  function renderFoodResult(food) {
+    currentScannedFood = food;
+    resultBox.classList.remove('hidden');
+    resultBox.innerHTML = `
+      <h3 class="result-heading">CHARLIE FOOD ANALYSIS</h3>
+      <p class="result-meal-name">${escapeHtml(food.name)}</p>
+
+      <div class="scores-grid">
+        <div class="score-chip primary">
+          <div class="score-chip-value">${food.healthScore.toFixed(1)}/10</div>
+          <div class="score-chip-label">Health Score</div>
+        </div>
+        <div class="score-chip">
+          <div class="score-chip-value">${food.gymScore.toFixed(1)}</div>
+          <div class="score-chip-label">Gym Score</div>
+        </div>
+        <div class="score-chip">
+          <div class="score-chip-value">${food.weightLossScore.toFixed(1)}</div>
+          <div class="score-chip-label">Weight Loss</div>
+        </div>
+        <div class="score-chip">
+          <div class="score-chip-value">${food.muscleBuildingScore.toFixed(1)}</div>
+          <div class="score-chip-label">Muscle Building</div>
+        </div>
+        <div class="score-chip">
+          <div class="score-chip-value">${food.energyScore.toFixed(1)}</div>
+          <div class="score-chip-label">Energy Score</div>
+        </div>
+      </div>
+
+      <div class="macro-grid">
+        <div class="macro-stat"><div class="macro-value">${food.calories}</div><div class="macro-label">kcal</div></div>
+        <div class="macro-stat"><div class="macro-value">${food.protein}g</div><div class="macro-label">Protein</div></div>
+        <div class="macro-stat"><div class="macro-value">${food.carbs}g</div><div class="macro-label">Carbs</div></div>
+        <div class="macro-stat"><div class="macro-value">${food.fat}g</div><div class="macro-label">Fat</div></div>
+        <div class="macro-stat"><div class="macro-value">${food.sugar}g</div><div class="macro-label">Sugar</div></div>
+        <div class="macro-stat"><div class="macro-value">${food.fibre}g</div><div class="macro-label">Fibre</div></div>
+      </div>
+
+      <div><strong>Benefits</strong></div>
+      <ul class="good">${food.benefits.map((g) => `<li>✓ ${escapeHtml(g)}</li>`).join('')}</ul>
+      <div><strong>Negatives</strong></div>
+      <ul class="bad">${food.negatives.map((b) => `<li>⚠ ${escapeHtml(b)}</li>`).join('')}</ul>
+      <div class="recommendation">"${escapeHtml(food.dailyRecommendation)}"</div>
+    `;
+    mealNameInput.value = food.name;
+    saveRow.classList.remove('hidden');
+  }
+
+  saveMealBtn.addEventListener('click', () => {
+    if (!currentScannedFood) return;
+    const food = currentScannedFood;
+    const entry = {
+      id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+      mealName: mealNameInput.value.trim() || food.name,
+      foodName: food.name,
+      savedAt: new Date().toISOString(),
+      calories: food.calories,
+      protein: food.protein,
+      carbs: food.carbs,
+      fat: food.fat,
+      sugar: food.sugar,
+      fibre: food.fibre,
+      healthScore: food.healthScore,
+      gymScore: food.gymScore,
+      weightLossScore: food.weightLossScore,
+      muscleBuildingScore: food.muscleBuildingScore,
+      energyScore: food.energyScore,
+      dailyRecommendation: food.dailyRecommendation
+    };
+    foodHistory.unshift(entry); // newest first
+    saveFoodHistory(foodHistory);
+    renderFoodHistory();
+    addLogLine(`Saved "${entry.mealName}" to your food history.`, 'system');
+  });
+
+  clearHistoryBtn.addEventListener('click', () => {
+    if (!foodHistory.length) return;
+    foodHistory = [];
+    saveFoodHistory(foodHistory);
+    renderFoodHistory();
+  });
+
+  renderFoodHistory();
+
+  // Expose so voice commands can trigger a lookup directly.
+  window.__charlieAnalyzeFood = (name) => {
+    const food = findFoodMatch(name);
+    if (food) {
+      searchInput.value = food.name;
+      renderFoodResult(food);
+    }
+    return food;
+  };
+}
+
+// Renders the saved-meals list in the Scanner tab, newest first.
+function renderFoodHistory() {
+  const list = document.getElementById('foodHistoryList');
+  const countLabel = document.getElementById('historyCount');
+  if (!list || !countLabel) return;
+
+  countLabel.textContent = `${foodHistory.length} meal${foodHistory.length === 1 ? '' : 's'} saved`;
+  list.innerHTML = '';
+
+  if (!foodHistory.length) {
+    const empty = document.createElement('li');
+    empty.className = 'history-empty';
+    empty.textContent = 'No meals saved yet — analyze a food above and tap "Save to history".';
+    list.appendChild(empty);
+    return;
+  }
+
+  foodHistory.forEach((entry) => {
+    const li = document.createElement('li');
+    li.className = 'history-item';
+
+    const main = document.createElement('div');
+    main.className = 'history-main';
+    const nameEl = document.createElement('div');
+    nameEl.className = 'history-meal-name';
+    nameEl.textContent = entry.mealName;
+    const metaEl = document.createElement('div');
+    metaEl.className = 'history-meta';
+    const savedDate = new Date(entry.savedAt);
+    metaEl.textContent = `${savedDate.toLocaleDateString()} · ${entry.calories} kcal · ${entry.protein}g protein`;
+    main.appendChild(nameEl);
+    main.appendChild(metaEl);
+
+    const score = document.createElement('div');
+    score.className = 'history-score';
+    score.textContent = `${entry.healthScore.toFixed(1)}/10`;
+
+    const removeBtn = document.createElement('button');
+    removeBtn.type = 'button';
+    removeBtn.setAttribute('aria-label', `Remove ${entry.mealName} from history`);
+    removeBtn.textContent = '✕';
+    removeBtn.addEventListener('click', () => {
+      foodHistory = foodHistory.filter((e) => e.id !== entry.id);
+      saveFoodHistory(foodHistory);
+      renderFoodHistory();
+    });
+
+    li.appendChild(main);
+    li.appendChild(score);
+    li.appendChild(removeBtn);
+    list.appendChild(li);
+  });
+}
+
+// Minimal HTML escaping since food result text is injected via innerHTML.
+function escapeHtml(str) {
+  const div = document.createElement('div');
+  div.textContent = str;
+  return div.innerHTML;
+}
+
+/* =========================================================
+   11. PERSONAL PROFILE SYSTEM
+   Separate localStorage key from the core "memory" object,
+   since this holds richer, optional personal details.
+   ========================================================= */
+const PROFILE_KEY = 'charlie_profile_v1';
+
+function loadProfile() {
+  const raw = localStorage.getItem(PROFILE_KEY);
+  if (!raw) return { name: '', age: '', activity: '', goals: [], activities: '' };
+  try {
+    return JSON.parse(raw);
+  } catch (e) {
+    return { name: '', age: '', activity: '', goals: [], activities: '' };
+  }
+}
+
+function saveProfile(profile) {
+  localStorage.setItem(PROFILE_KEY, JSON.stringify(profile));
+}
+
+let profile = loadProfile();
+
+function initProfile() {
+  const form = document.getElementById('profileForm');
+  const nameField = document.getElementById('profileName');
+  const ageField = document.getElementById('profileAge');
+  const activityField = document.getElementById('profileActivity');
+  const goalsField = document.getElementById('profileGoals');
+  const activitiesField = document.getElementById('profileActivities');
+
+  // Pre-fill the form from whatever was saved previously.
+  nameField.value = profile.name || memory.userName || '';
+  ageField.value = profile.age || '';
+  activityField.value = profile.activity || '';
+  goalsField.value = (profile.goals || []).join('\n');
+  activitiesField.value = profile.activities || '';
+
+  form.addEventListener('submit', (e) => {
+    e.preventDefault();
+    profile = {
+      name: nameField.value.trim(),
+      age: ageField.value.trim(),
+      activity: activityField.value,
+      goals: goalsField.value.split('\n').map((g) => g.trim()).filter(Boolean),
+      activities: activitiesField.value.trim()
+    };
+    saveProfile(profile);
+
+    // Keep the core "memory" name in sync too, so the assistant's
+    // spoken greetings match the profile name.
+    if (profile.name) {
+      memory.userName = profile.name;
+      saveMemory(memory);
+    }
+
+    renderProfileSummary();
+    renderDashboard(); // goals feed the daily focus box
+    addLogLine('Profile saved.', 'system');
+  });
+
+  renderProfileSummary();
+}
+
+function renderProfileSummary() {
+  const summaryBox = document.getElementById('profileSummary');
+  if (!profile.name && (!profile.goals || profile.goals.length === 0)) {
+    summaryBox.textContent = '';
+    return;
+  }
+  const lines = [`Hello ${profile.name || getUserLabel()}.`];
+  if (profile.goals && profile.goals.length) {
+    lines.push('Your current goals:');
+    profile.goals.forEach((g) => lines.push(`- ${g}`));
+  }
+  if (profile.activity) lines.push(`Activity level: ${profile.activity}`);
+  if (profile.activities) lines.push(`Favourite activities: ${profile.activities}`);
+  summaryBox.textContent = lines.join('\n');
+}
+
+/* =========================================================
+   12. DAILY ASSISTANT DASHBOARD
+   Time-aware greeting + a customizable list of daily
+   suggestions/reminders, persisted in localStorage. The first
+   suggestion in the list doubles as "Today's focus". Also
+   drives the Study Mode / Workout Mode focus timer.
+   ========================================================= */
+const DASHBOARD_KEY = 'charlie_dashboard_v1';
+const DEFAULT_SUGGESTIONS = ['Drink more water', '30 minutes of coding practice'];
+
+function loadSuggestions() {
+  const raw = localStorage.getItem(DASHBOARD_KEY);
+  if (!raw) return DEFAULT_SUGGESTIONS.slice();
+  try {
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : DEFAULT_SUGGESTIONS.slice();
+  } catch (e) {
+    return DEFAULT_SUGGESTIONS.slice();
+  }
+}
+
+function saveSuggestions(list) {
+  localStorage.setItem(DASHBOARD_KEY, JSON.stringify(list));
+}
+
+let suggestions = loadSuggestions();
+
+function initDashboard() {
+  const suggestionInput = document.getElementById('suggestionInput');
+  const addSuggestionBtn = document.getElementById('addSuggestionBtn');
+
+  addSuggestionBtn.addEventListener('click', addSuggestionFromInput);
+  suggestionInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') addSuggestionFromInput();
+  });
+
+  function addSuggestionFromInput() {
+    const value = suggestionInput.value.trim();
+    if (!value) return;
+    suggestions.push(value);
+    saveSuggestions(suggestions);
+    suggestionInput.value = '';
+    renderDashboard();
+  }
+
+  document.getElementById('studyModeBtn').addEventListener('click', () => startFocusTimer('study'));
+  document.getElementById('workoutModeBtn').addEventListener('click', () => startFocusTimer('workout'));
+  document.getElementById('timerStopBtn').addEventListener('click', stopFocusTimer);
+
+  renderDashboard();
+}
+
+function renderDashboard() {
+  const greetingTitle = document.getElementById('greetingTitle');
+  const greetingSub = document.getElementById('greetingSub');
+  const focusText = document.getElementById('focusText');
+  const list = document.getElementById('suggestionList');
+
+  // Time-of-day aware greeting.
+  const hour = new Date().getHours();
+  let greeting = 'GOOD EVENING';
+  if (hour < 12) greeting = 'GOOD MORNING';
+  else if (hour < 18) greeting = 'GOOD AFTERNOON';
+  const label = profile.name || memory.userName || getUserLabel();
+  greetingTitle.textContent = `${greeting}, ${label.toUpperCase()}`;
+  greetingSub.textContent = 'Charlie is online. Here is what is on the plan today.';
+
+  // First suggestion doubles as "Today's focus".
+  focusText.textContent = suggestions.length ? suggestions[0] : 'No focus set yet — add one below.';
+
+  // Render the full suggestion list with a remove (×) button each.
+  list.innerHTML = '';
+  if (!suggestions.length) {
+    const empty = document.createElement('li');
+    empty.className = 'suggestion-empty';
+    empty.textContent = 'No suggestions yet. Add reminders like "Swimming practice" or "Health: drink more water".';
+    list.appendChild(empty);
+    return;
+  }
+  suggestions.forEach((s, index) => {
+    const li = document.createElement('li');
+    const span = document.createElement('span');
+    span.textContent = s;
+    const removeBtn = document.createElement('button');
+    removeBtn.type = 'button';
+    removeBtn.setAttribute('aria-label', `Remove ${s}`);
+    removeBtn.textContent = '✕';
+    removeBtn.addEventListener('click', () => {
+      suggestions.splice(index, 1);
+      saveSuggestions(suggestions);
+      renderDashboard();
+    });
+    li.appendChild(span);
+    li.appendChild(removeBtn);
+    list.appendChild(li);
+  });
+}
+
+// Simple countdown focus timer shared by Study Mode and Workout Mode.
+let focusTimerInterval = null;
+let focusTimerSecondsLeft = 0;
+
+function startFocusTimer(mode) {
+  const timerBox = document.getElementById('timerBox');
+  const timerLabel = document.getElementById('timerLabel');
+  const timerReadout = document.getElementById('timerReadout');
+
+  stopFocusTimer(); // clear any existing timer first
+
+  const durationMinutes = mode === 'study' ? 25 : 20; // simple pomodoro-style defaults
+  focusTimerSecondsLeft = durationMinutes * 60;
+  timerLabel.textContent = mode === 'study' ? 'STUDY MODE' : 'WORKOUT MODE';
+  timerBox.classList.remove('hidden');
+  updateTimerReadout();
+
+  focusTimerInterval = setInterval(() => {
+    focusTimerSecondsLeft -= 1;
+    updateTimerReadout();
+    if (focusTimerSecondsLeft <= 0) {
+      stopFocusTimer();
+      addLogLine(`${mode === 'study' ? 'Study' : 'Workout'} session complete. Nice work.`, 'system');
+      showAlert(`${mode === 'study' ? 'Study' : 'Workout'} session complete!`);
+    }
+  }, 1000);
+
+  addLogLine(`${mode === 'study' ? 'Study' : 'Workout'} mode started — ${durationMinutes} minutes.`, 'system');
+
+  function updateTimerReadout() {
+    const m = Math.floor(focusTimerSecondsLeft / 60).toString().padStart(2, '0');
+    const s = (focusTimerSecondsLeft % 60).toString().padStart(2, '0');
+    timerReadout.textContent = `${m}:${s}`;
+  }
+}
+
+function stopFocusTimer() {
+  if (focusTimerInterval) {
+    clearInterval(focusTimerInterval);
+    focusTimerInterval = null;
+  }
+  document.getElementById('timerBox').classList.add('hidden');
+}
+
+/* =========================================================
+   13. COMMAND SYSTEM UPGRADE
+   New voice commands wired to the tabs/scanner/profile/
+   dashboard added above. Pushed onto the existing `commands`
+   array so they work alongside every V1 command.
+   ========================================================= */
+commands.push(
+  {
+    patterns: ['open food scanner', 'scan food', 'food scanner'],
+    respond: () => { switchTab('scanner'); return 'Opening the food scanner.'; }
+  },
+  {
+    patterns: ['what are my goals', 'tell me my goals'],
+    respond: () => {
+      switchTab('profile');
+      if (profile.goals && profile.goals.length) {
+        return `Your current goals are: ${profile.goals.join(', ')}.`;
+      }
+      return "You haven't set any goals yet. Open your profile to add some.";
+    }
+  },
+  {
+    patterns: ['show my profile', 'open my profile', 'open profile'],
+    respond: () => { switchTab('profile'); return 'Here is your profile.'; }
+  },
+  {
+    patterns: ['start study mode'],
+    respond: () => { switchTab('dashboard'); startFocusTimer('study'); return 'Starting study mode for 25 minutes.'; }
+  },
+  {
+    patterns: ['start workout mode'],
+    respond: () => { switchTab('dashboard'); startFocusTimer('workout'); return 'Starting workout mode for 20 minutes.'; }
+  },
+  {
+    patterns: ["today's plan", 'tell me today\u2019s plan', 'what is today\u2019s plan', "what's my plan today", 'show dashboard', 'open dashboard'],
+    respond: () => {
+      switchTab('dashboard');
+      if (suggestions.length) return `Today's focus is: ${suggestions[0]}. You have ${suggestions.length} item${suggestions.length === 1 ? '' : 's'} on your list.`;
+      return "You don't have any suggestions on today's plan yet.";
+    }
+  },
+  {
+    patterns: ['analyze food', 'analyse food', 'what is the score for'],
+    respond: (transcript) => {
+      switchTab('scanner');
+      const lower = transcript.toLowerCase();
+      const marker = lower.includes('analyze food') ? 'analyze food' : lower.includes('analyse food') ? 'analyse food' : 'what is the score for';
+      const idx = lower.indexOf(marker);
+      const foodName = transcript.slice(idx + marker.length).trim();
+      const food = window.__charlieAnalyzeFood ? window.__charlieAnalyzeFood(foodName) : null;
+      if (food) return `${food.name} scores ${food.healthScore.toFixed(1)} out of 10 for health. ${food.dailyRecommendation}`;
+      return 'Tell me a food name, for example "analyze food chicken breast".';
+    }
+  }
+);

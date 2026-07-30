@@ -949,3 +949,158 @@ body[data-state="speaking"] .status-label { color: var(--cyan); }
   .mode-row { flex-direction: column; }
   .scanner-row { flex-direction: column; }
 }
+
+/* =========================================================
+   FOOD SCANNER V2 ADDITIONS
+   Macro grid, multi-score grid, save row, and food history list.
+   ========================================================= */
+
+.food-result .result-heading {
+  font-family: var(--font-display);
+  color: var(--cyan);
+  font-size: 15px;
+  letter-spacing: 1px;
+  margin: 0 0 2px;
+}
+.food-result .result-meal-name {
+  font-size: 13px;
+  color: var(--text-dim);
+  margin: 0 0 14px;
+}
+
+.macro-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  margin-bottom: 16px;
+}
+.macro-stat {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 8px 6px;
+  text-align: center;
+  background: var(--bg);
+}
+.macro-stat .macro-value {
+  font-family: var(--font-display);
+  font-size: 15px;
+  color: var(--text);
+}
+.macro-stat .macro-label {
+  font-size: 9px;
+  letter-spacing: 1px;
+  color: var(--text-dim);
+  margin-top: 2px;
+  text-transform: uppercase;
+}
+
+.scores-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(95px, 1fr));
+  gap: 8px;
+  margin-bottom: 16px;
+}
+.score-chip {
+  border: 1px solid var(--cyan-dim);
+  border-radius: 8px;
+  padding: 10px 8px;
+  text-align: center;
+  background: rgba(62, 230, 255, 0.05);
+}
+.score-chip.primary {
+  border-color: var(--cyan);
+  background: rgba(62, 230, 255, 0.12);
+  grid-column: 1 / -1;
+  padding: 14px 10px;
+}
+.score-chip .score-chip-value {
+  font-family: var(--font-display);
+  font-size: 18px;
+  color: var(--cyan);
+}
+.score-chip.primary .score-chip-value { font-size: 26px; }
+.score-chip .score-chip-label {
+  font-size: 9px;
+  letter-spacing: 1px;
+  color: var(--text-dim);
+  margin-top: 3px;
+  text-transform: uppercase;
+}
+
+.save-row {
+  display: flex;
+  gap: 10px;
+  align-items: flex-end;
+  margin-bottom: 14px;
+  flex-wrap: wrap;
+}
+.save-row-field { flex: 1; min-width: 160px; display: flex; flex-direction: column; gap: 6px; }
+.save-row-field label {
+  font-family: var(--font-display);
+  font-size: 9px;
+  letter-spacing: 2px;
+  color: var(--text-dim);
+}
+.save-row-field input {
+  background: var(--bg);
+  border: 1px solid var(--line);
+  color: var(--text);
+  border-radius: 7px;
+  padding: 9px 10px;
+  font-family: var(--font-body);
+  font-size: 14px;
+}
+
+.history-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+.history-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.history-list .history-empty { color: var(--text-dim); font-size: 13px; font-style: italic; }
+.history-item {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 10px 12px;
+  background: var(--panel);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+}
+.history-item .history-main { flex: 1; min-width: 0; }
+.history-item .history-meal-name {
+  font-size: 14px;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.history-item .history-meta {
+  font-size: 11px;
+  color: var(--text-dim);
+  margin-top: 2px;
+}
+.history-item .history-score {
+  font-family: var(--font-display);
+  font-size: 15px;
+  color: var(--cyan);
+  white-space: nowrap;
+}
+.history-item button {
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  cursor: pointer;
+  font-size: 15px;
+  line-height: 1;
+}
+.history-item button:hover { color: var(--red); }
+
+@media (max-width: 420px) {
+  .macro-grid { grid-template-columns: repeat(2, 1fr); }
+}
