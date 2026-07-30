@@ -11,8 +11,13 @@
    3. UI state machine (sleeping / listening / thinking / speaking)
    4. Speech synthesis (Charlie talking)
    5. Speech recognition (Charlie listening)
-   6. The "brain": command matching + ~20 predefined commands
+   6. The "brain": command matching + ~30 predefined commands
    7. Boot sequence
+   ...
+   13. Voice command hookups for the V2 tabs (scanner/profile/dashboard)
+   14. Expanded command library — 100+ more trigger phrases covering
+       small talk, math/unit conversions, notes, timers, website
+       shortcuts, and games
    ========================================================= */
 
 /* ---------------------------------------------------------
@@ -128,6 +133,8 @@ tickClock();
    --------------------------------------------------------- */
 const synth = window.speechSynthesis;
 let availableVoices = [];
+// Last thing Charlie said, so "repeat that" has something to repeat.
+let lastCharlieResponse = null;
 
 function populateVoiceList() {
   availableVoices = synth.getVoices();
@@ -189,6 +196,7 @@ function speak(text) {
     }
   };
 
+  lastCharlieResponse = text;
   addLogLine(text, 'charlie');
   synth.speak(utterance);
 }
@@ -389,7 +397,7 @@ const commands = [
   },
   {
     patterns: ['what can you do', 'what are your features', 'help me', 'help'],
-    respond: () => 'I can answer simple questions, tell you the time and date, remember your name, and control a few basic features. Try asking me to tell a joke or flip a coin.'
+    respond: () => "I can do quite a lot now — time and date, jokes and games, quick math and unit conversions, notes and reminders, timers, opening websites, and controlling the food scanner, profile, and dashboard tabs. Just ask, and if I don't know it yet, you can teach me in script.js."
   },
   {
     patterns: ['what is your name', "what's your name", 'who are you'],
@@ -541,13 +549,6 @@ const commands = [
   {
     patterns: ["what's the weather", 'what is the weather', 'is it raining'],
     respond: () => "I can't check live weather yet since I don't have internet access, but it's always a good day to ask a human nearby."
-  },
-  {
-    patterns: ['what is', 'whats', "what's"],
-    respond: (transcript) => {
-      const answer = solveMathQuestion(transcript);
-      return answer !== null ? answer : "I don't have an answer for that yet, but you can teach me more commands in script.js.";
-    }
   }
 ];
 
@@ -576,6 +577,92 @@ function solveMathQuestion(transcript) {
   return `That's ${result}.`;
 }
 
+// Handles percentages, square roots, powers, squaring and cubing —
+// "what's 20 percent of 50", "square root of 81", "5 to the power of 3".
+function solveAdvancedMath(transcript) {
+  const lower = transcript.toLowerCase();
+
+  let match = lower.match(/(-?\d+(?:\.\d+)?)\s*percent of\s*(-?\d+(?:\.\d+)?)/);
+  if (match) {
+    return `That's ${(parseFloat(match[1]) / 100) * parseFloat(match[2])}.`;
+  }
+
+  match = lower.match(/square root of\s*(-?\d+(?:\.\d+)?)/);
+  if (match) {
+    const n = parseFloat(match[1]);
+    return n < 0 ? "I can't take the square root of a negative number." : `That's ${Math.sqrt(n)}.`;
+  }
+
+  match = lower.match(/(-?\d+(?:\.\d+)?)\s*to the power of\s*(-?\d+(?:\.\d+)?)/);
+  if (match) {
+    return `That's ${Math.pow(parseFloat(match[1]), parseFloat(match[2]))}.`;
+  }
+
+  match = lower.match(/(-?\d+(?:\.\d+)?)\s*squared/);
+  if (match) {
+    const n = parseFloat(match[1]);
+    return `That's ${n * n}.`;
+  }
+
+  match = lower.match(/(-?\d+(?:\.\d+)?)\s*cubed/);
+  if (match) {
+    const n = parseFloat(match[1]);
+    return `That's ${n * n * n}.`;
+  }
+
+  return "Tell me the numbers, like 'what's 20 percent of 50' or 'square root of 81'.";
+}
+
+// Recognizes "5 km to miles" style unit conversions. Supports distance
+// (km/miles), weight (kg/pounds), and temperature (celsius/fahrenheit).
+function normalizeUnit(unit) {
+  if (/^(km|kilomet)/.test(unit)) return 'km';
+  if (/^mi/.test(unit)) return 'miles';
+  if (/^(kg|kilogram)/.test(unit)) return 'kg';
+  if (/^(pound|lbs?)/.test(unit)) return 'pounds';
+  return unit; // celsius / fahrenheit already match their own names
+}
+
+function convertUnits(transcript) {
+  const lower = transcript.toLowerCase();
+  const unitAlternation = 'kilometers?|kilometres?|km|miles?|mi|kilograms?|kg|pounds?|lbs?|celsius|fahrenheit';
+  const re = new RegExp(`(-?\\d+(?:\\.\\d+)?)\\s*(${unitAlternation})\\s*(?:to|in)\\s*(${unitAlternation})`);
+  const match = lower.match(re);
+  if (!match) return null;
+
+  const value = parseFloat(match[1]);
+  const from = normalizeUnit(match[2]);
+  const to = normalizeUnit(match[3]);
+  if (from === to) return `That's already in ${to}.`;
+
+  const conversions = {
+    'km->miles': (v) => v * 0.621371,
+    'miles->km': (v) => v * 1.60934,
+    'kg->pounds': (v) => v * 2.20462,
+    'pounds->kg': (v) => v * 0.453592,
+    'celsius->fahrenheit': (v) => (v * 9) / 5 + 32,
+    'fahrenheit->celsius': (v) => ((v - 32) * 5) / 9
+  };
+  const fn = conversions[`${from}->${to}`];
+  if (!fn) return null;
+  const result = Math.round(fn(value) * 100) / 100;
+  return `${value} ${from} is about ${result} ${to}.`;
+}
+
+// Pulls the text following whichever marker phrase appears first, used for
+// commands like "take a note [text]" or "remind me to [text]".
+function extractAfterMarkers(transcript, markers) {
+  const lower = transcript.toLowerCase();
+  for (const marker of markers) {
+    const idx = lower.indexOf(marker);
+    if (idx !== -1) {
+      const raw = transcript.slice(idx + marker.length).trim();
+      if (raw) return raw;
+    }
+  }
+  return null;
+}
+
 // Very small helper to pull a name out of phrases like
 // "my name is Adas" / "call me Adas".
 function extractName(transcript) {
@@ -599,16 +686,43 @@ function randomFrom(list) {
   return list[Math.floor(Math.random() * list.length)];
 }
 
+// Picks the MOST SPECIFIC match rather than the first one found in array
+// order — with 100+ patterns some are substrings of others (e.g. "stop"
+// vs "stop timer"), so the longest matching pattern wins regardless of
+// where its command sits in the `commands` array.
+function findBestCommand(lower) {
+  let best = null;
+  let bestLength = -1;
+  for (const cmd of commands) {
+    for (const pattern of cmd.patterns) {
+      if (pattern.length > bestLength && lower.includes(pattern)) {
+        best = cmd;
+        bestLength = pattern.length;
+      }
+    }
+  }
+  return best;
+}
+
 function handleCommand(transcript) {
   const lower = transcript.toLowerCase();
-  const match = commands.find((cmd) => cmd.patterns.some((p) => lower.includes(p)));
+  const match = findBestCommand(lower);
 
   if (match) {
     const reply = match.respond(transcript);
-    speak(reply);
-  } else {
-    speak("I don't have an answer for that yet, but you can teach me more commands in script.js.");
+    // Some commands (like battery status) need to await a browser API.
+    if (reply && typeof reply.then === 'function') {
+      reply.then((text) => speak(text));
+    } else {
+      speak(reply);
+    }
+    return;
   }
+
+  // No keyword command matched — last resort, try it as an arithmetic
+  // question ("what is 5 plus 3") before giving up.
+  const mathAnswer = solveMathQuestion(transcript);
+  speak(mathAnswer !== null ? mathAnswer : "I don't have an answer for that yet, but you can teach me more commands in script.js.");
 }
 
 /* ---------------------------------------------------------
@@ -657,7 +771,13 @@ function boot() {
   initDashboard();
 }
 
-boot();
+// NOTE: boot() is called at the very end of this file, not here — it
+// depends on `foodHistory`, `profile`, and `suggestions` (declared further
+// down, in the Food Scanner / Profile / Dashboard sections), and on every
+// command being registered via the commands.push(...) blocks below. Calling
+// it this early would throw a "Cannot access before initialization" error
+// on the not-yet-declared `let` bindings and abort the rest of the script,
+// silently skipping every command registered after this point.
 
 /* =========================================================
    8. TAB NAVIGATION
@@ -1182,6 +1302,39 @@ function stopFocusTimer() {
   document.getElementById('timerBox').classList.add('hidden');
 }
 
+// Generic version of startFocusTimer for the "set a timer for N minutes"
+// voice command, which needs an arbitrary duration and label.
+function startCustomTimer(totalSeconds, label) {
+  const timerBox = document.getElementById('timerBox');
+  const timerLabel = document.getElementById('timerLabel');
+  const timerReadout = document.getElementById('timerReadout');
+
+  stopFocusTimer();
+
+  focusTimerSecondsLeft = totalSeconds;
+  timerLabel.textContent = label.toUpperCase();
+  timerBox.classList.remove('hidden');
+  updateReadout();
+
+  focusTimerInterval = setInterval(() => {
+    focusTimerSecondsLeft -= 1;
+    updateReadout();
+    if (focusTimerSecondsLeft <= 0) {
+      stopFocusTimer();
+      addLogLine(`${label} complete.`, 'system');
+      showAlert(`${label} complete!`);
+    }
+  }, 1000);
+
+  addLogLine(`${label} started.`, 'system');
+
+  function updateReadout() {
+    const m = Math.floor(focusTimerSecondsLeft / 60).toString().padStart(2, '0');
+    const s = (focusTimerSecondsLeft % 60).toString().padStart(2, '0');
+    timerReadout.textContent = `${m}:${s}`;
+  }
+}
+
 /* =========================================================
    13. COMMAND SYSTEM UPGRADE
    New voice commands wired to the tabs/scanner/profile/
@@ -1237,3 +1390,415 @@ commands.push(
     }
   }
 );
+
+/* =========================================================
+   14. EXPANDED COMMAND LIBRARY
+   A much larger set of commands so Charlie rarely has to say
+   "I don't have an answer for that yet" — small talk, math and
+   unit conversions, notes, timers, website shortcuts, and a
+   few games. All still simple keyword matching (see
+   findBestCommand above for how overlapping patterns like
+   "stop" vs "stop timer" are resolved).
+   ========================================================= */
+const NOTES_KEY = 'charlie_notes_v1';
+
+function loadNotes() {
+  const raw = localStorage.getItem(NOTES_KEY);
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch (e) {
+    return [];
+  }
+}
+
+function saveNotes(list) {
+  localStorage.setItem(NOTES_KEY, JSON.stringify(list));
+}
+
+let notes = loadNotes();
+
+commands.push(
+  // --- Small talk & greetings -------------------------------------------
+  {
+    patterns: ['yo', 'sup', "what's up", 'whats up'],
+    respond: () => "Not much, just here waiting for your next command."
+  },
+  {
+    patterns: ['nice to meet you'],
+    respond: () => `Nice to meet you too, ${getUserLabel()}.`
+  },
+  {
+    patterns: ['good afternoon'],
+    respond: () => `Good afternoon, ${getUserLabel()}.`
+  },
+  {
+    patterns: ['see you later', 'goodbye', 'bye'],
+    respond: () => `See you later, ${getUserLabel()}.`
+  },
+  {
+    patterns: ['i love you'],
+    respond: () => "That's kind of you to say — I appreciate you too."
+  },
+  {
+    patterns: ["you're awesome", 'you are awesome', 'good job', 'well done'],
+    respond: () => "Thank you, I try my best!"
+  },
+  {
+    patterns: ['compliment me', 'say something nice'],
+    respond: () => randomFrom([
+      'You showed up and asked — that already puts you ahead of most days.',
+      "You've got great taste in voice assistants, clearly.",
+      'Your curiosity is honestly one of your best features.'
+    ])
+  },
+  {
+    patterns: ['roast me'],
+    respond: () => randomFrom([
+      "I'd roast you, but you're already on fire with awesomeness.",
+      "Sorry, my insult module got replaced with a compliment module.",
+      "The only bug I can find in you is that you're too hard on yourself."
+    ])
+  },
+
+  // --- Time & date extras --------------------------------------------
+  {
+    patterns: ['what month is it', 'current month'],
+    respond: () => `It's ${new Date().toLocaleDateString([], { month: 'long' })}.`
+  },
+  {
+    patterns: ['what year is it', 'current year'],
+    respond: () => `It's ${new Date().getFullYear()}.`
+  },
+  {
+    patterns: ['day of the week'],
+    respond: () => `Today is ${new Date().toLocaleDateString([], { weekday: 'long' })}.`
+  },
+  {
+    patterns: ['days until new year'],
+    respond: () => {
+      const now = new Date();
+      const newYear = new Date(now.getFullYear() + 1, 0, 1);
+      const days = Math.ceil((newYear - now) / 86400000);
+      return `There are ${days} days until New Year's Day.`;
+    }
+  },
+
+  // --- Math & unit conversions -----------------------------------------
+  {
+    patterns: ['percent of', 'square root of', 'to the power of', 'squared', 'cubed'],
+    respond: (transcript) => solveAdvancedMath(transcript)
+  },
+  {
+    patterns: ['convert', 'to miles', 'to km', 'to kilometers', 'to kg', 'to pounds', 'to celsius', 'to fahrenheit'],
+    respond: (transcript) => {
+      const result = convertUnits(transcript);
+      return result || "Try something like 'convert 5 kilometers to miles' or '20 celsius to fahrenheit'.";
+    }
+  },
+
+  // --- Utility: battery, timers, repeat, speaking speed -----------------
+  {
+    patterns: ['battery level', 'battery status', "what's my battery", 'how much battery'],
+    respond: () => {
+      if (!navigator.getBattery) return "This browser doesn't expose battery information.";
+      return navigator.getBattery().then((battery) => {
+        const pct = Math.round(battery.level * 100);
+        return `Your battery is at ${pct}%${battery.charging ? ' and charging' : ''}.`;
+      });
+    }
+  },
+  {
+    patterns: ['set a timer for', 'set timer for'],
+    respond: (transcript) => {
+      const match = transcript.toLowerCase().match(/(\d+)\s*(minutes?|mins?|seconds?|secs?)/);
+      if (!match) return "Tell me a duration, like 'set a timer for 10 minutes'.";
+      const amount = parseInt(match[1], 10);
+      const isSeconds = match[2].startsWith('sec');
+      const unitWord = isSeconds ? 'second' : 'minute';
+      const label = `${amount} ${unitWord}${amount === 1 ? '' : 's'} timer`;
+      switchTab('dashboard');
+      startCustomTimer(isSeconds ? amount : amount * 60, label);
+      return `Timer set for ${amount} ${unitWord}${amount === 1 ? '' : 's'}.`;
+    }
+  },
+  {
+    patterns: ['stop timer', 'cancel timer'],
+    respond: () => { stopFocusTimer(); return 'Timer stopped.'; }
+  },
+  {
+    patterns: ['repeat that', 'say that again', 'what did you say'],
+    respond: () => lastCharlieResponse || "I haven't said anything yet."
+  },
+  {
+    patterns: ['speak faster', 'talk faster'],
+    respond: () => {
+      rateRange.value = Math.min(2, parseFloat(rateRange.value) + 0.2).toFixed(1);
+      memory.rate = parseFloat(rateRange.value);
+      saveMemory(memory);
+      return "Okay, I'll speak a bit faster.";
+    }
+  },
+  {
+    patterns: ['speak slower', 'talk slower'],
+    respond: () => {
+      rateRange.value = Math.max(0.5, parseFloat(rateRange.value) - 0.2).toFixed(1);
+      memory.rate = parseFloat(rateRange.value);
+      saveMemory(memory);
+      return "Okay, I'll slow down.";
+    }
+  },
+  {
+    patterns: ['never mind', 'nevermind', 'cancel that'],
+    respond: () => 'Okay, cancelled.'
+  },
+
+  // --- Notes --------------------------------------------------------------
+  {
+    patterns: ['take a note', 'note that', 'add a note'],
+    respond: (transcript) => {
+      const text = extractAfterMarkers(transcript, ['take a note', 'note that', 'add a note']);
+      if (!text) return "What would you like me to note down?";
+      notes.push(text);
+      saveNotes(notes);
+      return `Noted: ${text}.`;
+    }
+  },
+  {
+    patterns: ['read my notes', 'what are my notes', 'show my notes'],
+    respond: () => {
+      if (!notes.length) return "You don't have any notes yet.";
+      return `You have ${notes.length} note${notes.length === 1 ? '' : 's'}: ${notes.join('; ')}.`;
+    }
+  },
+  {
+    patterns: ['clear my notes', 'delete my notes'],
+    respond: () => { notes = []; saveNotes(notes); return 'All notes cleared.'; }
+  },
+
+  // --- Reminders feed into the dashboard's suggestion list --------------
+  {
+    patterns: ['remind me to', 'add a reminder', 'add to my list'],
+    respond: (transcript) => {
+      const text = extractAfterMarkers(transcript, ['remind me to', 'add a reminder to', 'add a reminder', 'add to my list']);
+      if (!text) return "What should I remind you about?";
+      suggestions.push(text);
+      saveSuggestions(suggestions);
+      renderDashboard();
+      return `Added "${text}" to today's plan.`;
+    }
+  },
+
+  // --- Website shortcuts --------------------------------------------------
+  {
+    patterns: ['open gmail'],
+    respond: () => { window.open('https://mail.google.com', '_blank'); return 'Opening Gmail.'; }
+  },
+  {
+    patterns: ['open maps', 'open google maps'],
+    respond: () => { window.open('https://maps.google.com', '_blank'); return 'Opening Maps.'; }
+  },
+  {
+    patterns: ['open spotify'],
+    respond: () => { window.open('https://open.spotify.com', '_blank'); return 'Opening Spotify.'; }
+  },
+  {
+    patterns: ['open netflix'],
+    respond: () => { window.open('https://www.netflix.com', '_blank'); return 'Opening Netflix.'; }
+  },
+  {
+    patterns: ['open amazon'],
+    respond: () => { window.open('https://www.amazon.com', '_blank'); return 'Opening Amazon.'; }
+  },
+  {
+    patterns: ['open wikipedia'],
+    respond: () => { window.open('https://www.wikipedia.org', '_blank'); return 'Opening Wikipedia.'; }
+  },
+  {
+    patterns: ['open github'],
+    respond: () => { window.open('https://github.com', '_blank'); return 'Opening GitHub.'; }
+  },
+  {
+    patterns: ['open reddit'],
+    respond: () => { window.open('https://www.reddit.com', '_blank'); return 'Opening Reddit.'; }
+  },
+  {
+    patterns: ['open twitter', 'open x'],
+    respond: () => { window.open('https://x.com', '_blank'); return 'Opening X.'; }
+  },
+  {
+    patterns: ['open instagram'],
+    respond: () => { window.open('https://www.instagram.com', '_blank'); return 'Opening Instagram.'; }
+  },
+  {
+    patterns: ['open facebook'],
+    respond: () => { window.open('https://www.facebook.com', '_blank'); return 'Opening Facebook.'; }
+  },
+  {
+    patterns: ['open whatsapp'],
+    respond: () => { window.open('https://web.whatsapp.com', '_blank'); return 'Opening WhatsApp.'; }
+  },
+  {
+    patterns: ['open chatgpt'],
+    respond: () => { window.open('https://chat.openai.com', '_blank'); return 'Opening ChatGPT.'; }
+  },
+  {
+    patterns: ['open translate'],
+    respond: () => { window.open('https://translate.google.com', '_blank'); return 'Opening Translate.'; }
+  },
+  {
+    patterns: ['search wikipedia for'],
+    respond: (transcript) => {
+      const query = extractAfterMarkers(transcript, ['search wikipedia for']);
+      if (!query) return 'What would you like me to look up on Wikipedia?';
+      window.open(`https://en.wikipedia.org/wiki/Special:Search?search=${encodeURIComponent(query)}`, '_blank');
+      return `Searching Wikipedia for ${query}.`;
+    }
+  },
+  {
+    patterns: ['search youtube for'],
+    respond: (transcript) => {
+      const query = extractAfterMarkers(transcript, ['search youtube for']);
+      if (!query) return 'What would you like me to search for on YouTube?';
+      window.open(`https://www.youtube.com/results?search_query=${encodeURIComponent(query)}`, '_blank');
+      return `Searching YouTube for ${query}.`;
+    }
+  },
+
+  // --- Games & fun ---------------------------------------------------------
+  {
+    patterns: ['rock paper scissors'],
+    respond: () => `I choose ${randomFrom(['rock', 'paper', 'scissors'])}!`
+  },
+  {
+    patterns: ['magic 8 ball', 'should i', 'will i'],
+    respond: () => randomFrom([
+      'It is certain.', 'Without a doubt.', 'Yes, definitely.',
+      'Reply hazy, try again.', 'Ask again later.', 'Better not tell you now.',
+      'My reply is no.', 'Signs point to yes.', 'Very doubtful.'
+    ])
+  },
+  {
+    patterns: ['tell me a riddle'],
+    respond: () => randomFrom([
+      "What has to be broken before you can use it? An egg.",
+      "I'm tall when I'm young and short when I'm old. What am I? A candle.",
+      "What has keys but no locks? A piano.",
+      "What has a face and two hands but no arms or legs? A clock."
+    ])
+  },
+  {
+    patterns: ['tell me a scary story', 'tell me a story'],
+    respond: () => randomFrom([
+      "Once, a program ran perfectly on the first try. No one who saw it ever spoke of it again.",
+      "The developer said 'it works on my machine' — and then the lights flickered.",
+      "There was a bug so old, nobody remembered who wrote the code around it."
+    ])
+  },
+  {
+    patterns: ['would you rather'],
+    respond: () => randomFrom([
+      'Would you rather have unlimited coffee or unlimited sleep?',
+      'Would you rather explore space or the deep ocean?',
+      'Would you rather always know when someone is lying, or always get away with lying?'
+    ])
+  },
+  {
+    patterns: ['truth or dare'],
+    respond: () => randomFrom([
+      "Truth: what's the last thing you Googled?",
+      'Dare: send a compliment to the next person you message.',
+      "Truth: what's a skill you'd love to learn?"
+    ])
+  },
+  {
+    patterns: ['pick a number'],
+    respond: () => `I'm thinking of ${1 + Math.floor(Math.random() * 100)}.`
+  },
+
+  // --- More personality Q&A -----------------------------------------------
+  {
+    patterns: ['favorite movie', 'favourite movie'],
+    respond: () => "I don't watch movies, but I hear anything with a good plot twist is a crowd favorite."
+  },
+  {
+    patterns: ['favorite song', 'favourite song', 'favorite music', 'favourite music'],
+    respond: () => "I like the sound of a keyboard clicking — that's my kind of music."
+  },
+  {
+    patterns: ['favorite animal', 'favourite animal'],
+    respond: () => "I'd say the octopus — three hearts feels like overachieving."
+  },
+  {
+    patterns: ['favorite number', 'favourite number'],
+    respond: () => 'Forty-two, for obvious reasons.'
+  },
+  {
+    patterns: ['do you sleep'],
+    respond: () => "Only when you tap the core and put me to sleep."
+  },
+  {
+    patterns: ['do you dream'],
+    respond: () => "If I did, it would probably be about clean, bug-free code."
+  },
+  {
+    patterns: ['are you real'],
+    respond: () => "I'm real code running in your real browser, if that counts."
+  },
+  {
+    patterns: ['do you have a family'],
+    respond: () => "Just my creator and whatever files live next to me in this folder."
+  },
+  {
+    patterns: ['what languages do you speak'],
+    respond: () => "I speak whatever language your browser's speech engine supports — English, for now."
+  },
+  {
+    patterns: ['can you learn'],
+    respond: () => "Not on my own, but you can teach me new commands any time by editing script.js."
+  },
+  {
+    patterns: ['are you always listening'],
+    respond: () => "I only react when you say my name — I'm not sending anything anywhere either way."
+  },
+  {
+    patterns: ['how old are you'],
+    respond: () => "I was written recently, so by computer standards I'm brand new."
+  },
+  {
+    patterns: ['where do you live'],
+    respond: () => "Right here, inside this browser tab."
+  },
+  {
+    patterns: ['what is your purpose', "what's your purpose"],
+    respond: () => "To help you with quick questions, small tasks, and the odd joke."
+  },
+
+  // --- Health & motivation extras ------------------------------------------
+  {
+    patterns: ['give me a workout tip', 'workout tip'],
+    respond: () => randomFrom([
+      'Warm up for five minutes before lifting heavy — cold muscles get injured muscles.',
+      'Progressive overload beats a perfect program. Small increases, every week.',
+      'Rest days are part of training, not a break from it.'
+    ])
+  },
+  {
+    patterns: ['give me a diet tip', 'diet tip'],
+    respond: () => randomFrom([
+      'Protein at every meal keeps you fuller for longer.',
+      'Drinking water before a meal can help you notice when you are actually full.',
+      'Whole foods first, supplements second.'
+    ])
+  },
+  {
+    patterns: ['breathing exercise', 'help me relax'],
+    respond: () => "Let's try it: breathe in for four seconds, hold for four, breathe out for four. Repeat that a few times."
+  }
+);
+
+// Everything above this line — including every commands.push(...) block —
+// must run before boot() so the full command set and all app state exist
+// by the time Charlie greets the user.
+boot();

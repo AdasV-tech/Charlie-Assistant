@@ -40,9 +40,9 @@ glowing animated core, the transcript log, and local memory.
 - **Voice output** — Charlie replies out loud using the browser's built-in
   `SpeechSynthesis` API. You can change the voice, speaking rate, and pitch
   from the settings drawer.
-- **30+ built-in commands** — time, date, jokes, coin flips, dice rolls, web
-  searches, greetings, food analysis, profile/dashboard control, and more
-  (full list below).
+- **100+ built-in commands** — time, date, jokes, games, math and unit
+  conversions, notes and reminders, timers, website shortcuts, greetings,
+  food analysis, profile/dashboard control, and more (full list below).
 - **Food Scanner** — local, on-device food lookup with a health score,
   benefits, negatives, and a recommendation. No image-recognition AI is
   used — see the disclaimer on that tab for exactly how it works.
@@ -134,36 +134,28 @@ ways around this while running Charlie from your PC:
 
 ## Built-in voice commands
 
-Say any of these (or close variations — Charlie matches on keywords, not
-exact phrasing):
+Charlie ships with **100+ commands** (over 200 trigger phrases total) in the
+`commands` array in `script.js`. Say any of these — or a close variation,
+since Charlie matches on keywords, not exact phrasing. When two commands
+could both match (e.g. "stop" vs. "stop timer"), the longer, more specific
+phrase wins.
 
-| Say something like...              | Charlie does...                                |
-|-------------------------------------|-------------------------------------------------|
-| "What time is it?"                 | Tells the current time                          |
-| "What's the date?"                 | Tells today's date                              |
-| "Hello Charlie" / "Hi Charlie"     | Greets you by name                              |
-| "What can you do?"                 | Lists its abilities                             |
-| "What is your name?"               | Introduces itself                               |
-| "My name is Adas"                  | Saves your name to memory                       |
-| "What is my name?"                 | Recalls your saved name                         |
-| "Forget me"                        | Wipes saved memory                              |
-| "Tell me a joke"                   | Tells a short joke                              |
-| "Flip a coin"                      | Heads or tails                                  |
-| "Roll a dice"                      | Random number 1–6                               |
-| "Thank you"                        | Replies politely                                |
-| "How are you?"                     | Small talk reply                                |
-| "Good morning" / "Good night"      | Time-appropriate greeting                       |
-| "Open Google" / "Open YouTube"     | Opens the site in a new tab                     |
-| "Search for [anything]"            | Opens a Google search for that phrase           |
-| "Stop" / "Go to sleep"             | Stops speaking and returns to sleeping state    |
-| "Are you an AI?"                   | Explains how Charlie works                      |
-| "Open food scanner"                | Switches to the Scanner tab                     |
-| "Analyze food [name]"              | Looks up a food and speaks its score            |
-| "What are my goals?"               | Opens your profile and reads your saved goals   |
-| "Show my profile"                  | Switches to the Profile tab                     |
-| "Start study mode"                 | Starts a 25-minute focus timer                  |
-| "Start workout mode"               | Starts a 20-minute focus timer                  |
-| "Tell me today's plan"             | Opens the dashboard and reads today's focus     |
+| Category | Say something like... | Charlie does... |
+|----------|------------------------|-------------------|
+| Time & date | "What time is it?" / "What year is it?" / "Day of the week" | Speaks the current time, date, month, year, or weekday |
+| Identity & memory | "What is your name?" / "My name is Adas" / "Forget me" | Introduces itself, saves your name, or wipes memory |
+| Small talk | "How are you?" / "Good morning" / "Compliment me" / "Roast me" | Casual replies, greetings, and playful banter |
+| Personality Q&A | "Are you sentient?" / "Favorite animal?" / "What is your purpose?" | Answers ~15 personality/trivia-style questions |
+| Math | "What is 5 plus 3" / "20 percent of 50" / "Square root of 81" | Arithmetic, percentages, square roots, powers |
+| Unit conversion | "Convert 5 kilometers to miles" / "20 celsius to fahrenheit" | Distance, weight, and temperature conversions |
+| Notes & reminders | "Take a note buy milk" / "Read my notes" / "Remind me to stretch" | Saves notes and adds items to today's plan |
+| Timers | "Set a timer for 10 minutes" / "Stop timer" | Starts/stops a countdown timer on the Dashboard |
+| Games & fun | "Tell me a joke" / "Rock paper scissors" / "Magic 8 ball" / "Tell me a riddle" | Jokes, coin flips, dice, riddles, and small games |
+| Web shortcuts | "Open Google" / "Open Gmail" / "Search Wikipedia for octopuses" | Opens common sites or a search in a new tab |
+| Health & motivation | "Give me a workout tip" / "Motivate me" / "Breathing exercise" | Short tips, quotes, and a guided breath |
+| Voice control | "Speak faster" / "Speak slower" / "Repeat that" | Adjusts speaking rate or repeats the last reply |
+| Assistant control | "Stop" / "Go to sleep" / "Battery level" | Sleeps Charlie or reports device battery |
+| Scanner / Profile / Dashboard | "Open food scanner" / "Show my profile" / "Start study mode" / "Tell me today's plan" | Switches tabs, analyzes food, reads goals, starts focus timers |
 
 Anything not recognized gets an honest "I don't have an answer for that
 yet" reply — see **Adding your own commands** below.
@@ -184,7 +176,12 @@ block near the bottom for V2 additions). Each entry looks like this:
 
 - `patterns` is a list of lowercase substrings to match against what you said.
 - `respond` returns the text Charlie will speak. It receives the raw
-  transcript as an argument if you need to parse extra details out of it.
+  transcript as an argument if you need to parse extra details out of it. It
+  can also return a Promise if you need to await something (see the battery
+  status command for an example).
+- If your phrase overlaps with an existing one (e.g. your new "stop music"
+  vs. the built-in "stop"), don't worry about array order — `findBestCommand`
+  always picks whichever matching pattern is the longest/most specific.
 
 Add a new object and Charlie will pick it up immediately — no build step
 needed, just refresh the page.
