@@ -1,0 +1,3 @@
+{
+  "_comment": "Map spoken app names to how to launch them on YOUR machine. Left side is what you say after 'open' (lowercase). Right side is either an exact path/command, or a URL to open in your browser. Anything not listed here falls back to a best-effort guess based on your OS - add an entry whenever that guess fails. See README.md for OS-specific examples."
+}

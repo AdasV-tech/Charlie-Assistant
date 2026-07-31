@@ -4,8 +4,13 @@ A lightweight, browser-based personal AI assistant with a futuristic HUD-style
 interface. Charlie listens to your voice, matches it against a growing set of
 commands, and speaks back — plus a food scanner, a daily dashboard, and a
 personal profile. Everything runs client-side using tools already built into
-your browser. No paid APIs, no external AI services, no backend server
-required.
+your browser, with an optional Gemini API key (bring your own, stored only in
+your browser) so Charlie can answer open-ended questions too. No backend
+server required for the web version.
+
+There's also a [desktop version](desktop/) — a Python app that runs on your
+own machine and can open apps, run shell commands, and generate/save files,
+not just talk.
 
 ![status](https://img.shields.io/badge/status-v2.0.0-3ee6ff)
 
@@ -217,15 +222,15 @@ natural next steps if you want to keep building:
 - **Real AI vision model** — replace the Food Scanner's name-based lookup
   with an on-device or local image-classification model so it can identify
   food directly from the photo.
-- **Connect to a local AI model** — swap the keyword-matching `handleCommand`
-  function for a call to a locally hosted LLM (e.g. via Ollama) for
-  open-ended conversation instead of fixed commands.
-- **PC control agent** — pair the browser front end with a small local
-  backend (Node.js or Python) that can open apps, control media playback,
-  or run scripts on your computer in response to voice commands.
-- **Wake word detection** — add an always-listening wake word (e.g. "Hey
-  Charlie") using a lightweight wake-word library, instead of requiring a
-  tap on the core.
+- ~~Connect to a local AI model~~ — done: unmatched commands now fall back to
+  Gemini (see Settings in the app). A fully local model (e.g. via Ollama)
+  is still a reasonable swap if you want zero cloud dependency.
+- ~~PC control agent~~ — done, see the [desktop version](desktop/): open
+  apps, run shell commands, and generate/save files from voice.
+- **Wake word detection on desktop** — the web version already requires
+  saying "Charlie"; a lower-power always-listening wake word library (e.g.
+  Porcupine) would let the desktop version run without keeping a full STT
+  session open at all times.
 - **Raspberry Pi version** — run the local backend on a Raspberry Pi with a
   microphone/speaker hat for a dedicated physical assistant device.
 - **Smart home control** — integrate with local smart-home APIs for voice
