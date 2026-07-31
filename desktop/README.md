@@ -11,6 +11,13 @@ was a deliberate choice, not an oversight.
 
 ## Setup
 
+**Windows, easiest path:** download `CharlieSetup.exe` from the
+[latest release](https://github.com/AdasV-tech/Charlie-Assistant/releases/latest),
+run it, done — no Python required, it's bundled inside. Skip to "What you
+can say" below.
+
+**Everyone else (or if you want to run/edit the source directly):**
+
 1. **Install Python 3.9+** if you don't have it.
 2. **Install system audio dependencies** (needed before `pip install` will work):
    - **Windows:** nothing extra — PyAudio installs from a prebuilt wheel.
@@ -45,11 +52,16 @@ was a deliberate choice, not an oversight.
 | "Charlie, make me a python script that renames files" | Gemini generates it, saved to `~/CharlieFiles/` |
 | "Charlie, open my files" | Opens the `~/CharlieFiles` folder |
 | "Charlie, forget our conversation" | Clears Gemini's memory of the current session |
+| "Charlie, go to sleep" | Ignores everything except "wake up" until you do |
+| "Charlie, wake up" | Resumes normal listening |
+| "Charlie, check for updates" | Checks GitHub right now instead of waiting for the next launch |
 | "Charlie, `<anything else>`" | Answered by Gemini, same as the web version |
 | "Charlie, exit" / "quit" | Shuts Charlie down |
 
-You can talk over Charlie mid-response — saying "Charlie" again interrupts
-whatever he's saying and starts on your new request immediately.
+You can talk over Charlie at any point — even while he's still "thinking"
+about a slow request (a Gemini call, a long-running shell command) — and
+saying "Charlie" again immediately drops whatever he was doing and starts on
+your new request. Nothing you say is queued up behind a slow response.
 
 ## Teaching Charlie your apps — `apps.json`
 
@@ -69,6 +81,36 @@ Charlie tries a reasonable OS-specific guess when you say "open X" (e.g.
 Keys are lowercase, exactly what you'd say after "open". A value starting
 with `http://`/`https://` opens in your browser; anything else is launched
 directly.
+
+## Auto-updates
+
+Charlie checks GitHub for a newer version every time it starts (and on
+demand — "Charlie, check for updates") and applies it automatically: no
+manual re-download, no reinstalling, no resetting your setup. It only ever
+replaces Charlie's own code (this script, or the packaged .exe) — your API
+key (`charlie_config.json`), your `apps.json`, and everything in
+`~/CharlieFiles` are never touched by an update.
+
+A couple of things worth knowing:
+
+- If you're running the plain script, an update rewrites `charlie_pc.py` in
+  place and restarts itself immediately — you'll see it happen, no action
+  needed from you.
+- If you're running the packaged .exe, it downloads the matching platform
+  build from the latest GitHub release and swaps it in. This path is
+  best-effort: it's implemented following the standard pattern for
+  self-replacing a running Windows executable, but wasn't exercised against
+  an actual published release while building this (no Windows machine or
+  release available in the environment this was built in) — worth a real
+  test after your first tagged release, per the note in "Packaging" below.
+- Every downloaded update is syntax-checked before it's applied — if a bad
+  push ever made it to `main`, Charlie refuses to install it rather than
+  bricking itself with a broken update.
+- Pass `--no-update` to skip the check on a given launch (offline use, or if
+  you're intentionally running an older/modified version).
+- This does mean Charlie trusts whatever is on `main` of this repo — same
+  trust model as any self-updating tool pointed at your own GitHub repo.
+  Worth keeping in mind if you ever add collaborators.
 
 ## Safety notes — read this
 
@@ -92,9 +134,17 @@ version does exactly what you asked for, unfiltered.
 
 ## Uninstalling
 
-Charlie doesn't touch the registry, doesn't install a background service, and
-doesn't add itself to startup — running it is just `python charlie_pc.py`, so
-removing it is just as light:
+**Installed via `CharlieSetup.exe`:** use Windows' normal "Add or Remove
+Programs" like any other app — it removes the Start Menu/desktop shortcuts
+and program files via a real uninstaller entry. It deliberately leaves your
+saved API key and `apps.json` in place (see `installer/charlie.iss` for why).
+If you also want those gone, run `charlie.exe --uninstall` yourself first
+(from the install folder, e.g. `%LocalAppData%\Programs\Charlie`), then
+uninstall via Add/Remove Programs.
+
+**Installed from source / portable exe:** Charlie doesn't touch the
+registry, doesn't install a background service, and doesn't add itself to
+startup, so removing it is just as light:
 
 ```
 python charlie_pc.py --uninstall
@@ -106,12 +156,12 @@ asks for a typed `yes` before touching anything, and does nothing if you
 don't confirm. It then prints the two optional cleanup steps that have to
 happen outside the script: deleting the `desktop/` folder itself, and
 `pip uninstall`-ing the three dependencies if you don't want them for
-anything else. If you built the packaged executable, the same flag works
+anything else. If you built the portable executable, the same flag works
 there too: `charlie --uninstall` (or `charlie.exe --uninstall` on Windows).
 
 ## Packaging as a standalone executable
 
-To build a double-click executable yourself:
+To build the raw double-click executable yourself:
 
 ```
 pip install pyinstaller
@@ -122,11 +172,30 @@ The binary lands in `dist/`. This has to be built **on the OS you're
 targeting** (a Windows .exe needs to be built on Windows, etc.) — PyInstaller
 doesn't cross-compile.
 
+**For a proper Windows installer** (Start Menu shortcut, optional desktop
+icon, a real "Add or Remove Programs" entry — not just a bare .exe), build
+the exe above first, then compile `installer/charlie.iss` with
+[Inno Setup](https://jrsoftware.org/isinfo.php):
+
+```
+iscc installer\charlie.iss
+```
+
+This produces `installer/dist_installer/CharlieSetup.exe`. There's nothing
+to check for or install first on the *target* machine — the bundled exe
+already contains its own Python runtime, so Setup.exe just places files and
+creates shortcuts, the same as any normal installer.
+
 If you push this repo to GitHub, `.github/workflows/build-desktop.yml` (added
-alongside this app) builds Windows, macOS, and Linux executables automatically
-via GitHub Actions and attaches them to a release whenever you push a tag like
-`v1.0.0` — that's the easiest way to get a real downloadable app without
-needing all three OSes yourself.
+alongside this app) does all of the above automatically via GitHub Actions —
+builds Windows, macOS, and Linux executables *and* `CharlieSetup.exe`, then
+attaches them all to a release whenever you push a tag like `v1.0.0`. That's
+the easiest way to get a real downloadable app without needing Windows,
+macOS, Inno Setup, or all three OSes yourself. Note: the installer step was
+written against Inno Setup 6, which GitHub's `windows-latest` runners ship
+preinstalled — but wasn't test-compiled anywhere while building this (no
+Windows/Inno Setup available in this environment), so double-check the first
+CI run actually produces `CharlieSetup.exe` before relying on it.
 
 ## Differences from the web version
 

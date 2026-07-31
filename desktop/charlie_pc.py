@@ -16,7 +16,8 @@ File map:
   4. System actions (open app / run command / files)
   5. Command dispatch
   6. Speech recognition (listening loop)
-  7. Entry point
+  7. Auto-update (checks GitHub on every startup)
+  8. Entry point
 """
 
 from __future__ import annotations
@@ -39,13 +40,22 @@ from urllib import parse as urlparse
 from urllib import request as urlrequest
 from urllib.error import HTTPError, URLError
 
+VERSION = "1.0.0"
+
 # ---------------------------------------------------------------------------
 # 1. CONFIG
 # The Gemini key lives outside the repo: env var first, then a local
 # gitignored config file, then an interactive first-run prompt. Never
 # hardcode a real key into this file — it's meant to be shared/committed.
 # ---------------------------------------------------------------------------
-APP_DIR = Path(__file__).resolve().parent
+if getattr(sys, "frozen", False):
+    # PyInstaller --onefile extracts to a throwaway _MEIxxxxxx temp folder at
+    # runtime and __file__ points there, not at the actual .exe — using that
+    # for config would silently lose the saved API key and apps.json every
+    # single run. sys.executable is the real, persistent .exe location.
+    APP_DIR = Path(sys.executable).resolve().parent
+else:
+    APP_DIR = Path(__file__).resolve().parent
 CONFIG_PATH = APP_DIR / "charlie_config.json"
 APPS_PATH = APP_DIR / "apps.json"
 WORKSPACE_DIR = Path.home() / "CharlieFiles"
@@ -224,6 +234,9 @@ def speak(text: str) -> None:
     print(f"Charlie: {text}")
 
     if _tts_engine is None:
+        # Text-only mode (no working TTS driver) — still leave the state
+        # machine in a sane resting state instead of stuck on "speaking".
+        set_state("awake" if _awake.is_set() else "sleeping")
         return
 
     with _speech_lock:
@@ -246,6 +259,11 @@ def speak(text: str) -> None:
         finally:
             if my_generation == _speech_generation:
                 speaking_event.clear()
+                # Back to a resting state once speech genuinely finishes —
+                # without this it would sit on "speaking" forever. _awake
+                # and set_state live in section 6 but are safe to reach for
+                # here: both exist at module scope well before this ever runs.
+                set_state("awake" if _awake.is_set() else "sleeping")
 
     threading.Thread(target=_run, daemon=True).start()
 
@@ -408,6 +426,20 @@ def handle_command(command: str) -> str:
         reset_conversation()
         return "Fresh start — conversation cleared."
 
+    if re.match(r"^(check for update|update yourself|update now)", lower):
+        remote_version = _fetch_remote_version()
+        if not remote_version:
+            return "I couldn't reach GitHub to check for updates."
+        if _parse_version(remote_version) <= _parse_version(VERSION):
+            return f"I'm already up to date, running version {VERSION}."
+
+        def _delayed_update():
+            time.sleep(2.5)  # let the spoken confirmation actually play first
+            check_for_update(auto_apply=True)
+
+        threading.Thread(target=_delayed_update, daemon=True).start()
+        return f"Version {remote_version} is available. Updating now, I'll be right back."
+
     if re.search(r"^(what'?s the time|what time is it|current time)\b", lower):
         return f"It's {datetime.now().strftime('%I:%M %p').lstrip('0')}."
 
@@ -450,7 +482,8 @@ def handle_command(command: str) -> str:
     if re.match(r"^help\b", lower):
         return (
             "I can open apps, run commands, search the web, save files you dictate or "
-            "have me generate, and answer anything else through Gemini. Just ask."
+            "have me generate, and answer anything else through Gemini. Say 'go to sleep' "
+            "or 'wake up' to pause or resume me, and 'check for updates' any time. Just ask."
         )
 
     return ask_gemini(command)
@@ -458,18 +491,71 @@ def handle_command(command: str) -> str:
 
 # ---------------------------------------------------------------------------
 # 6. SPEECH RECOGNITION — always-on listening loop
+#
+# State machine: sleeping -> awake -> thinking -> speaking -> awake ...
+# "sleeping" ignores everything except "wake up". The mic itself never
+# stops running in any state (recognizer.listen() below is always active) —
+# what changes is whether a heard phrase gets acted on.
+#
+# Heard commands are handled on a background thread (_process_command), not
+# inline in this loop. That's the fix for the real bug this had before:
+# handle_command() can block for up to 30s on a Gemini call or a shell
+# command, and running it directly in this loop meant the mic was
+# completely dead — not just "can't interrupt", genuinely not listening —
+# for that whole window. Now the loop always goes straight back to
+# listening, and a generation counter discards a superseded reply if a
+# newer command comes in while an older one is still "thinking".
 # ---------------------------------------------------------------------------
 WAKE_WORD_RE = re.compile(r"\bcharlie\b", re.IGNORECASE)
 STRIP_LEAD_RE = re.compile(r"^\s*(hey|hi|hello|ok|okay)?\s*,?\s*charlie\s*,?\s*", re.IGNORECASE)
 STRIP_TRAIL_RE = re.compile(r"\s*,?\s*charlie\s*[.!?]?\s*$", re.IGNORECASE)
+WAKE_UP_RE = re.compile(r"\bwake up\b", re.IGNORECASE)
+GO_TO_SLEEP_RE = re.compile(r"\b(go to sleep|go sleep|sleep now)\b", re.IGNORECASE)
+
+current_state = "awake"  # sleeping | awake | thinking | speaking — matches _awake's default below
+_awake = threading.Event()
+_awake.set()  # Charlie starts ready to go — no extra "wake up" needed on launch
+_processing_generation = 0
+_generation_lock = threading.Lock()
+
+
+def set_state(state: str) -> None:
+    global current_state
+    current_state = state
+    print(f"[{state}]")
 
 
 def strip_wake_word(transcript: str) -> str:
     return STRIP_TRAIL_RE.sub("", STRIP_LEAD_RE.sub("", transcript)).strip()
 
 
+def _process_command(command: str, generation: int) -> None:
+    set_state("thinking")
+    reply = handle_command(command)
+    with _generation_lock:
+        if generation != _processing_generation:
+            return  # a newer command came in while this one was thinking — drop it
+    set_state("speaking")
+    speak(reply)
+
+
 def handle_heard_transcript(transcript: str) -> None:
+    global _processing_generation
+
     if not WAKE_WORD_RE.search(transcript):
+        return
+
+    if not _awake.is_set():
+        if WAKE_UP_RE.search(transcript):
+            _awake.set()
+            set_state("awake")
+            speak("I'm awake.")
+        return  # ignore anything else while asleep
+
+    if GO_TO_SLEEP_RE.search(transcript):
+        _awake.clear()
+        set_state("sleeping")
+        speak('Going to sleep. Say "Charlie, wake up" any time.')
         return
 
     # Barge-in: hearing the wake word while Charlie is talking interrupts
@@ -479,8 +565,11 @@ def handle_heard_transcript(transcript: str) -> None:
 
     print(f"You: {transcript}")
     command = strip_wake_word(transcript)
-    reply = handle_command(command)
-    speak(reply)
+
+    with _generation_lock:
+        _processing_generation += 1
+        generation = _processing_generation
+    threading.Thread(target=_process_command, args=(command, generation), daemon=True).start()
 
 
 def listen_loop() -> None:
@@ -501,10 +590,13 @@ def listen_loop() -> None:
         print("Calibrating for background noise...")
         recognizer.adjust_for_ambient_noise(source, duration=1)
 
+    set_state("awake")
     print("Charlie is listening. Say \"Charlie\" followed by a command. Ctrl+C to quit.")
     while True:
-        # Listening runs continuously, including while Charlie is speaking
-        # (see handle_heard_transcript) so barge-in works.
+        # This listen() call is the only thing that ever blocks this loop —
+        # heard commands are handed off to a thread (see handle_heard_transcript)
+        # so the mic is back to listening again immediately, even while
+        # Charlie is still thinking or speaking about the last thing.
         with mic as source:
             try:
                 audio = recognizer.listen(source, timeout=6, phrase_time_limit=12)
@@ -524,7 +616,158 @@ def listen_loop() -> None:
 
 
 # ---------------------------------------------------------------------------
-# 7. ENTRY POINT
+# 7. AUTO-UPDATE
+# Checks GitHub for a newer version on every startup and applies it
+# automatically — no manual re-download, no resetting anything. This only
+# ever touches Charlie's own code (this script, or the packaged
+# executable) — your API key, apps.json, and everything in ~/CharlieFiles
+# are never read or written here, so an update never resets your setup.
+# ---------------------------------------------------------------------------
+GITHUB_REPO = "AdasV-tech/Charlie-Assistant"
+RAW_BASE = f"https://raw.githubusercontent.com/{GITHUB_REPO}/main/desktop"
+RELEASES_API = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
+
+_PLATFORM_ASSET = {
+    "Windows": "charlie-windows.zip",
+    "Darwin": "charlie-macos.zip",
+    "Linux": "charlie-linux.zip",
+}
+
+
+def _parse_version(v: str) -> tuple:
+    parts = re.findall(r"\d+", v)
+    return tuple(int(p) for p in parts) or (0,)
+
+
+def _http_get(url: str, timeout: int = 6) -> bytes | None:
+    try:
+        with urlrequest.urlopen(url, timeout=timeout) as resp:
+            return resp.read()
+    except (HTTPError, URLError, TimeoutError, OSError):
+        return None
+
+
+def _fetch_remote_version() -> str | None:
+    raw = _http_get(f"{RAW_BASE}/VERSION")
+    return raw.decode("utf-8").strip() if raw else None
+
+
+def _relaunch_script() -> None:
+    """Re-execs the current script so the update takes effect immediately —
+    no manual restart needed."""
+    python = sys.executable
+    os.execv(python, [python, str(Path(__file__).resolve())] + sys.argv[1:])
+
+
+def _apply_script_update() -> bool:
+    new_source = _http_get(f"{RAW_BASE}/charlie_pc.py")
+    if not new_source:
+        return False
+    try:
+        compile(new_source, "charlie_pc.py", "exec")
+    except SyntaxError as e:
+        print(f"Downloaded update failed a sanity check ({e}) — not applying it.")
+        return False
+
+    script_path = Path(__file__).resolve()
+    tmp_path = script_path.with_suffix(".py.new")
+    tmp_path.write_bytes(new_source)
+    os.replace(tmp_path, script_path)  # atomic swap on POSIX and Windows
+    return True
+
+
+def _apply_frozen_update() -> None:
+    """Best-effort updater for the PyInstaller-packaged executable. Exits or
+    re-execs the process on success; simply returns on failure so the caller
+    can fall back to the current version. Not exercised in development (no
+    packaged build or published release to test against here) — verify this
+    once you've published a tagged release, per README.md."""
+    import tempfile
+    import zipfile
+
+    release_raw = _http_get(RELEASES_API)
+    if not release_raw:
+        return
+    try:
+        release = json.loads(release_raw)
+    except json.JSONDecodeError:
+        return
+
+    asset_name = _PLATFORM_ASSET.get(_os_name)
+    asset_url = next(
+        (a["browser_download_url"] for a in release.get("assets", []) if a.get("name") == asset_name),
+        None,
+    ) if asset_name else None
+    if not asset_url:
+        return
+
+    zip_bytes = _http_get(asset_url, timeout=30)
+    if not zip_bytes:
+        return
+
+    current_exe = Path(sys.executable).resolve()
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        zip_path = Path(tmp_dir) / "update.zip"
+        zip_path.write_bytes(zip_bytes)
+        with zipfile.ZipFile(zip_path) as zf:
+            zf.extractall(tmp_dir)
+        new_exe = next(
+            (p for p in Path(tmp_dir).iterdir() if p.is_file() and p.name != "update.zip"), None
+        )
+        if not new_exe:
+            return
+
+        if _os_name == "Windows":
+            # Can't overwrite a running .exe on Windows — hand off to a tiny
+            # batch script that waits for this process to exit, swaps the
+            # file, and relaunches it.
+            staged = current_exe.with_name("charlie_update_staged.exe")
+            shutil.copy(new_exe, staged)
+            helper = current_exe.with_name("charlie_update.bat")
+            helper.write_text(
+                "@echo off\r\n"
+                "timeout /t 2 /nobreak > NUL\r\n"
+                f'del "{current_exe}"\r\n'
+                f'move /y "{staged}" "{current_exe}"\r\n'
+                f'start "" "{current_exe}"\r\n'
+                'del "%~f0"\r\n'
+            )
+            subprocess.Popen(["cmd", "/c", str(helper)], creationflags=subprocess.DETACHED_PROCESS)
+            os._exit(0)
+        else:
+            # POSIX allows replacing the file backing an already-running process.
+            os.chmod(new_exe, 0o755)
+            os.replace(new_exe, current_exe)
+            os.execv(str(current_exe), [str(current_exe)] + sys.argv[1:])
+
+
+def check_for_update(auto_apply: bool = True) -> None:
+    remote_version = _fetch_remote_version()
+    if not remote_version:
+        return  # offline or GitHub unreachable — never block startup on this
+    if _parse_version(remote_version) <= _parse_version(VERSION):
+        return
+
+    print(f"Update available: {VERSION} -> {remote_version}")
+    if not auto_apply:
+        print("Restart without --no-update to apply it automatically.")
+        return
+
+    print("Downloading update...")
+    if getattr(sys, "frozen", False):
+        _apply_frozen_update()  # exits/relaunches on success; only returns on failure
+        print("Update download failed — continuing with the current version.")
+        return
+
+    if _apply_script_update():
+        print(f"Updated to {remote_version}. Restarting...")
+        _relaunch_script()
+    else:
+        print("Update download failed — continuing with the current version.")
+
+
+# ---------------------------------------------------------------------------
+# 8. ENTRY POINT
 # ---------------------------------------------------------------------------
 def uninstall() -> None:
     """Removes everything Charlie has written to this machine: the saved
@@ -568,12 +811,20 @@ def uninstall() -> None:
     print("  3. (optional) unset the GEMINI_API_KEY environment variable, if you set one")
 
 
-def main() -> None:
+def main(auto_update: bool = True) -> None:
     global _api_key
-    print("Charlie desktop assistant")
+    print(f"Charlie desktop assistant — v{VERSION}")
     print(f"Platform: {_os_name}")
     print(f"Files Charlie creates go to: {WORKSPACE_DIR}")
     print("Run with --uninstall at any time to remove everything Charlie has saved.")
+
+    # "Always auto update, not that you need to reset everything": checks
+    # GitHub on every launch and, if there's a newer version, downloads and
+    # applies it automatically (re-launching itself so it takes effect
+    # immediately) — never touching charlie_config.json, apps.json, or
+    # ~/CharlieFiles. See section 7 above. If this updates and relaunches,
+    # everything below this line simply doesn't run in THIS process.
+    check_for_update(auto_apply=auto_update)
 
     _api_key = get_api_key()
     if not _api_key:
@@ -592,10 +843,14 @@ if __name__ == "__main__":
         "--uninstall", action="store_true",
         help="remove the saved API key, generated files, and cache, then exit",
     )
+    parser.add_argument(
+        "--no-update", action="store_true",
+        help="skip the automatic update check on startup",
+    )
     args = parser.parse_args()
 
     if args.uninstall:
         uninstall()
         sys.exit(0)
 
-    main()
+    main(auto_update=not args.no_update)
