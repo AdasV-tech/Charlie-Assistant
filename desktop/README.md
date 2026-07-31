@@ -11,10 +11,15 @@ was a deliberate choice, not an oversight.
 
 ## Setup
 
-**Windows, easiest path:** download `CharlieSetup.exe` from the
-[latest release](https://github.com/AdasV-tech/Charlie-Assistant/releases/latest),
-run it, done — no Python required, it's bundled inside. Skip to "What you
-can say" below.
+**Windows, easiest path:**
+[**Download CharlieSetup.exe**](https://github.com/AdasV-tech/Charlie-Assistant/releases/latest/download/CharlieSetup.exe) —
+starts the download immediately, no releases page or asset-picking. Run it,
+done — no Python required, it's bundled inside. Skip to "What you can say"
+below.
+
+(That link always resolves to whatever the latest tagged release is — it's
+GitHub's `/releases/latest/download/<asset>` redirect, not a link to a
+specific version, so it never goes stale as new versions ship.)
 
 **Everyone else (or if you want to run/edit the source directly):**
 
