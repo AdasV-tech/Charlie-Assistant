@@ -84,9 +84,25 @@ function saveGeminiKey(key) {
 
 if (geminiKeyInput) geminiKeyInput.value = loadGeminiKey();
 if (geminiKeySaveBtn) {
-  geminiKeySaveBtn.addEventListener('click', () => {
-    saveGeminiKey(geminiKeyInput.value);
-    addLogLine('Gemini API key saved to this device.', 'system');
+  geminiKeySaveBtn.addEventListener('click', async () => {
+    const key = geminiKeyInput.value.trim();
+    if (!key) {
+      addLogLine('Enter a Gemini API key before saving.', 'system');
+      return;
+    }
+    saveGeminiKey(key);
+    resetGeminiHistory();
+    geminiKeySaveBtn.disabled = true;
+    geminiKeySaveBtn.textContent = 'CONNECTING...';
+    const ok = await verifyGeminiKey(key);
+    geminiKeySaveBtn.disabled = false;
+    geminiKeySaveBtn.textContent = 'SAVE KEY';
+    addLogLine(
+      ok
+        ? 'Gemini connected. Ask me anything and I’ll do my best to answer.'
+        : 'Saved, but that key didn’t verify — double-check it at aistudio.google.com/apikey.',
+      'system'
+    );
   });
 }
 
@@ -422,7 +438,7 @@ const commands = [
   },
   {
     patterns: ['what can you do', 'what are your features', 'help me', 'help'],
-    respond: () => "I can do quite a lot now — time and date, jokes and games, quick math and unit conversions, notes and reminders, timers, opening websites, and controlling the food scanner, profile, and dashboard tabs. Just ask, and if I don't know it yet, you can teach me in script.js."
+    respond: () => "I can do quite a lot now — time and date, jokes and games, quick math and unit conversions, notes and reminders, timers, opening websites, and controlling the food scanner, profile, and dashboard tabs. And for anything else — real questions, explanations, advice — just ask me directly and I'll answer using Gemini."
   },
   {
     patterns: ['what is your name', "what's your name", 'who are you'],
@@ -449,6 +465,13 @@ const commands = [
     respond: () => {
       resetMemory();
       return 'All done. I have forgotten your name and reset your settings.';
+    }
+  },
+  {
+    patterns: ['forget our conversation', 'clear the chat', 'clear our chat', 'start a new conversation', 'new conversation', 'reset our conversation'],
+    respond: () => {
+      resetGeminiHistory();
+      return "Fresh start — I've cleared what we were just talking about.";
     }
   },
   {
@@ -715,12 +738,32 @@ function randomFrom(list) {
 // order — with 100+ patterns some are substrings of others (e.g. "stop"
 // vs "stop timer"), so the longest matching pattern wins regardless of
 // where its command sits in the `commands` array.
+// Cache compiled regexes so we're not rebuilding 100+ of them on every
+// single utterance.
+const patternRegexCache = new Map();
+function patternMatches(lower, pattern) {
+  let re = patternRegexCache.get(pattern);
+  if (!re) {
+    const escaped = pattern.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    // Word-boundary match, not a raw substring match — otherwise short
+    // patterns like "yo" or "sing" fire inside unrelated words ("new YOrk",
+    // "increaSING") and short-circuit real questions before they ever
+    // reach Gemini. \b only applies where the pattern actually starts/ends
+    // on a word character, so punctuation-adjacent patterns still work.
+    const startsWord = /^\w/.test(pattern);
+    const endsWord = /\w$/.test(pattern);
+    re = new RegExp(`${startsWord ? '\\b' : ''}${escaped}${endsWord ? '\\b' : ''}`);
+    patternRegexCache.set(pattern, re);
+  }
+  return re.test(lower);
+}
+
 function findBestCommand(lower) {
   let best = null;
   let bestLength = -1;
   for (const cmd of commands) {
     for (const pattern of cmd.patterns) {
-      if (pattern.length > bestLength && lower.includes(pattern)) {
+      if (pattern.length > bestLength && patternMatches(lower, pattern)) {
         best = cmd;
         bestLength = pattern.length;
       }
@@ -756,41 +799,120 @@ function handleCommand(transcript) {
 }
 
 /* ---------------------------------------------------------
-   GEMINI FALLBACK
+   GEMINI FALLBACK — Charlie's "brain" for open-ended questions
    Anything that isn't a built-in command or a math question
-   gets sent to Google's Gemini API so Charlie can answer
-   open-ended questions instead of just admitting defeat.
+   gets sent to Google's Gemini API so Charlie can hold an
+   actual conversation instead of just admitting defeat.
    Requires a user-supplied API key saved in Settings (see
-   GEMINI_KEY_STORAGE above) — nothing is bundled or committed.
+   GEMINI_KEY_STORAGE above) — nothing is bundled or committed,
+   since this is a public static site.
+
+   Keeps a short rolling history so follow-up questions
+   ("what about tomorrow?") work like a real conversation, and
+   gives Gemini a system persona tuned for being spoken aloud
+   (short, no markdown) rather than displayed as text.
    --------------------------------------------------------- */
 const GEMINI_MODEL = 'gemini-flash-latest';
+const GEMINI_API_BASE = 'https://generativelanguage.googleapis.com/v1beta/models';
+const GEMINI_HISTORY_LIMIT = 16; // ~8 back-and-forth exchanges
+
+const GEMINI_SYSTEM_INSTRUCTION = [
+  "You are Charlie, a helpful voice assistant. Your replies are converted to speech and read aloud, never displayed as text.",
+  "Keep answers short and conversational — usually one to three sentences — unless the user clearly asks for a list, steps, or detail.",
+  "Never use markdown, asterisks, headers, bullet symbols, or code fences, since those get read aloud literally.",
+  "Answer directly and confidently. Don't hedge, don't apologize for not being able to browse, and don't say you don't know unless you truly have no reasonable answer."
+].join(' ');
+
+let geminiHistory = [];
+
+function resetGeminiHistory() {
+  geminiHistory = [];
+}
+
+// Strips markdown syntax Gemini might still slip in, so it never gets
+// read out loud as literal asterisks/hashes/backticks.
+function stripMarkdownForSpeech(text) {
+  return text
+    .replace(/```[\s\S]*?```/g, '')
+    .replace(/[*_`#]+/g, '')
+    .replace(/^\s*[-•]\s+/gm, '')
+    .replace(/\n{2,}/g, '. ')
+    .replace(/\n/g, ' ')
+    .replace(/\s{2,}/g, ' ')
+    .trim();
+}
+
+// Quick, cheap call (no generation cost) just to confirm a key is valid —
+// used right when the user saves it in Settings so they get instant
+// feedback instead of finding out mid-conversation.
+async function verifyGeminiKey(apiKey) {
+  try {
+    const res = await fetch(`${GEMINI_API_BASE}?key=${encodeURIComponent(apiKey)}`);
+    return res.ok;
+  } catch (e) {
+    return false;
+  }
+}
 
 async function askGemini(question) {
   const apiKey = loadGeminiKey();
   if (!apiKey) {
-    return "I don't have an answer for that yet. Add a free Gemini API key in Settings and I can look things up for you.";
+    openSettingsDrawer();
+    geminiKeyInput?.focus();
+    return "I can look that up — I just need a free Gemini key first. I've opened Settings for you; paste one in and ask me again.";
   }
 
   try {
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${encodeURIComponent(apiKey)}`;
+    const url = `${GEMINI_API_BASE}/${GEMINI_MODEL}:generateContent?key=${encodeURIComponent(apiKey)}`;
+    const contents = [...geminiHistory, { role: 'user', parts: [{ text: question }] }];
     const res = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        contents: [{ parts: [{ text: question }] }]
+        contents,
+        systemInstruction: { parts: [{ text: GEMINI_SYSTEM_INSTRUCTION }] },
+        // maxOutputTokens has to cover Gemini's hidden "thinking" tokens as
+        // well as the visible reply — anything much lower than this and the
+        // model sometimes burns the whole budget thinking and gets cut off
+        // mid-sentence (finishReason MAX_TOKENS with empty/partial text).
+        generationConfig: { temperature: 0.6, maxOutputTokens: 1024 }
       })
     });
 
     if (!res.ok) {
-      if (res.status === 400 || res.status === 401 || res.status === 403) {
-        return "That Gemini API key doesn't seem to work. Double-check it in Settings.";
+      if (res.status === 401 || res.status === 403) {
+        openSettingsDrawer();
+        return "That Gemini API key doesn't seem to work. Double-check it in Settings — I've opened it for you.";
       }
-      return "I couldn't reach Gemini just now. Try again in a moment.";
+      if (res.status === 429) {
+        return "Gemini's rate limit kicked in — give it a few seconds and ask again.";
+      }
+      return "I couldn't reach Gemini just now. Try asking again in a moment.";
     }
 
     const data = await res.json();
-    const text = data?.candidates?.[0]?.content?.parts?.map((part) => part.text).join(' ').trim();
-    return text || "Gemini didn't return an answer for that.";
+    const candidate = data?.candidates?.[0];
+    const rawText = candidate?.content?.parts?.map((part) => part.text || '').join(' ').trim();
+
+    if (!rawText) {
+      if (candidate?.finishReason === 'SAFETY') {
+        return "I can't answer that one safely — try rephrasing.";
+      }
+      if (candidate?.finishReason === 'MAX_TOKENS') {
+        return "That answer ran long and got cut off — try asking it more specifically.";
+      }
+      return "Gemini didn't return an answer for that — try rephrasing the question.";
+    }
+
+    // Keep the real (unstripped) text in history for context, but speak a
+    // version with markdown stripped so nothing gets read aloud literally.
+    geminiHistory.push({ role: 'user', parts: [{ text: question }] });
+    geminiHistory.push({ role: 'model', parts: [{ text: rawText }] });
+    if (geminiHistory.length > GEMINI_HISTORY_LIMIT) {
+      geminiHistory = geminiHistory.slice(-GEMINI_HISTORY_LIMIT);
+    }
+
+    return stripMarkdownForSpeech(rawText);
   } catch (e) {
     return "I couldn't reach Gemini — check your internet connection and try again.";
   }
@@ -806,6 +928,7 @@ function resetMemory() {
   saveMemory(memory);
   rateRange.value = 1;
   pitchRange.value = 1;
+  resetGeminiHistory();
 }
 
 resetMemoryBtn.addEventListener('click', () => {
@@ -879,12 +1002,16 @@ function initTabs() {
    The voice/rate/pitch/forget-me controls now live in a
    slide-up drawer instead of cluttering the main screen.
    ========================================================= */
+function openSettingsDrawer() {
+  document.getElementById('drawerOverlay')?.classList.remove('hidden');
+}
+
 function initSettingsDrawer() {
   const settingsBtn = document.getElementById('settingsBtn');
   const drawerOverlay = document.getElementById('drawerOverlay');
   const drawerCloseBtn = document.getElementById('drawerCloseBtn');
 
-  settingsBtn.addEventListener('click', () => drawerOverlay.classList.remove('hidden'));
+  settingsBtn.addEventListener('click', openSettingsDrawer);
   drawerCloseBtn.addEventListener('click', () => drawerOverlay.classList.add('hidden'));
   // Clicking the dim backdrop (but not the drawer itself) also closes it.
   drawerOverlay.addEventListener('click', (e) => {
@@ -1743,7 +1870,11 @@ commands.push(
     respond: () => `I choose ${randomFrom(['rock', 'paper', 'scissors'])}!`
   },
   {
-    patterns: ['magic 8 ball', 'should i', 'will i'],
+    // Deliberately narrow: bare "should i" / "will i" used to catch almost
+    // any real question phrased that way ("should I learn Python or JS
+    // first?") and hijack it into a joke reply instead of a real answer.
+    // Now it only fires when the magic 8 ball is asked for by name.
+    patterns: ['magic 8 ball', 'ask the 8 ball', 'shake the 8 ball'],
     respond: () => randomFrom([
       'It is certain.', 'Without a doubt.', 'Yes, definitely.',
       'Reply hazy, try again.', 'Ask again later.', 'Better not tell you now.',
@@ -1827,7 +1958,7 @@ commands.push(
   },
   {
     patterns: ['can you learn'],
-    respond: () => "Not on my own, but you can teach me new commands any time by editing script.js."
+    respond: () => "I remember what we talk about in a conversation, and I can look up anything I don't already know — just ask."
   },
   {
     patterns: ['are you always listening'],
