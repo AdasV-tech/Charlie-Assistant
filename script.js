@@ -202,14 +202,22 @@ if (synth.onvoiceschanged !== undefined) {
 rateRange.value = memory.rate;
 pitchRange.value = memory.pitch;
 
+// Bumped on every speak() call so a stale utterance's onend/onerror (from
+// one that just got interrupted) can't clobber state for the one that
+// superseded it — the classic race when barge-in cancels mid-speech.
+let speechToken = 0;
+
 function speak(text) {
   if (!('speechSynthesis' in window)) {
     addLogLine('Speech output is not supported in this browser.', 'system');
+    isProcessing = false;
     return;
   }
 
-  // Cancel anything currently queued so responses never overlap.
+  // Cancel anything currently playing/queued — this is also what makes
+  // barge-in work: a new speak() call always wins immediately.
   synth.cancel();
+  const token = ++speechToken;
 
   const utterance = new SpeechSynthesisUtterance(text);
   const chosenVoice = availableVoices[voiceSelect.value];
@@ -217,8 +225,16 @@ function speak(text) {
   utterance.rate = parseFloat(rateRange.value);
   utterance.pitch = parseFloat(pitchRange.value);
 
-  utterance.onstart = () => setState('speaking');
+  utterance.onstart = () => {
+    if (token !== speechToken) return;
+    setState('speaking');
+    // No longer "processing" once actual audio starts — the mic can listen
+    // right through the response so saying "Charlie" again interrupts it.
+    isProcessing = false;
+    startListening();
+  };
   utterance.onend = () => {
+    if (token !== speechToken) return;
     isProcessing = false;
     if (isAwake) {
       setState('awake');
@@ -228,6 +244,7 @@ function speak(text) {
     }
   };
   utterance.onerror = () => {
+    if (token !== speechToken) return;
     isProcessing = false;
     if (isAwake) {
       setState('awake');
@@ -299,9 +316,11 @@ function stripWakeWord(transcript) {
 }
 
 // Restarts the mic so Charlie keeps listening between phrases — recognition
-// only ever fully stops when the user taps the core (sleepCharlie).
+// only ever fully stops when the user taps the core (sleepCharlie). Runs
+// even while Charlie is talking (see utterance.onstart in speak()) so
+// saying "Charlie" again barges in and interrupts the current response.
 function startListening() {
-  if (!recognition || isListening || isProcessing || synth.speaking) return;
+  if (!recognition || isListening || isProcessing) return;
   try {
     recognition.start();
   } catch (e) {
@@ -317,7 +336,9 @@ if (SpeechRecognitionAPI) {
 
   recognition.onstart = () => {
     isListening = true;
-    setState('listening');
+    // Don't stomp the "speaking" visual if we're just quietly listening
+    // for a barge-in while Charlie talks.
+    if (!synth.speaking) setState('listening');
   };
 
   recognition.onresult = (event) => {
@@ -330,19 +351,26 @@ if (SpeechRecognitionAPI) {
       return;
     }
 
+    // Barge-in: saying the wake word while Charlie is talking cuts him off
+    // immediately instead of waiting for the response to finish. Bump the
+    // token first so the interrupted utterance's onend/onerror (which can
+    // fire well before the new response is ready, e.g. mid Gemini fetch)
+    // can't clobber the "thinking" state we're about to set below.
+    if (synth.speaking) {
+      speechToken++;
+      synth.cancel();
+    }
+
     addLogLine(transcript, 'user');
     setState('thinking');
     isProcessing = true;
     const command = stripWakeWord(transcript);
-    // Small delay so the "thinking" state is visible before Charlie replies —
-    // this also leaves room to plug in a slower AI backend later.
-    setTimeout(() => {
-      if (!command) {
-        speak(`Yes ${getUserLabel()}? I'm listening.`);
-      } else {
-        handleCommand(command);
-      }
-    }, 500);
+    // Handled immediately — no artificial delay before Charlie responds.
+    if (!command) {
+      speak(`Yes ${getUserLabel()}? I'm listening.`);
+    } else {
+      handleCommand(command);
+    }
   };
 
   recognition.onerror = (event) => {
@@ -361,7 +389,7 @@ if (SpeechRecognitionAPI) {
       showAlert(message);
     }
     if (isAwake) {
-      setState('awake');
+      if (!synth.speaking) setState('awake');
     } else {
       setState('sleeping');
     }
@@ -370,7 +398,10 @@ if (SpeechRecognitionAPI) {
   recognition.onend = () => {
     isListening = false;
     if (isAwake) {
-      setState('awake');
+      // A recognition session can time out mid-response (we run it
+      // concurrently with speaking for barge-in) — don't flicker the UI
+      // away from "speaking" just because that segment ended.
+      if (!synth.speaking) setState('awake');
       // Keep listening for "hey Charlie" / follow-up commands until the
       // core button is pressed — never go back to sleep just because a
       // response finished.
@@ -817,10 +848,10 @@ const GEMINI_API_BASE = 'https://generativelanguage.googleapis.com/v1beta/models
 const GEMINI_HISTORY_LIMIT = 16; // ~8 back-and-forth exchanges
 
 const GEMINI_SYSTEM_INSTRUCTION = [
-  "You are Charlie, a helpful voice assistant. Your replies are converted to speech and read aloud, never displayed as text.",
-  "Keep answers short and conversational — usually one to three sentences — unless the user clearly asks for a list, steps, or detail.",
+  "You are Charlie, a voice assistant. Your replies are converted to speech and read aloud, never displayed as text, and the user can interrupt you mid-sentence, so get to the point fast.",
+  "Be as brief as possible: answer in one short sentence whenever you can, and never more than two sentences, unless the user explicitly asks for detail, steps, or a list.",
   "Never use markdown, asterisks, headers, bullet symbols, or code fences, since those get read aloud literally.",
-  "Answer directly and confidently. Don't hedge, don't apologize for not being able to browse, and don't say you don't know unless you truly have no reasonable answer."
+  "Answer directly and confidently. Skip preamble, throat-clearing, and caveats. Don't say you don't know unless you truly have no reasonable answer."
 ].join(' ');
 
 let geminiHistory = [];
