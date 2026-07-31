@@ -226,6 +226,12 @@
         <label for="pitchRange">PITCH</label>
         <input type="range" id="pitchRange" min="0" max="2" step="0.1" value="1" />
       </div>
+      <div class="control-group">
+        <label for="geminiKeyInput">GEMINI API KEY</label>
+        <input type="password" id="geminiKeyInput" placeholder="Paste your Gemini API key..." autocomplete="off" spellcheck="false" />
+        <button class="save-btn" id="geminiKeySaveBtn">SAVE KEY</button>
+        <p class="control-hint">Stored only in this browser (never uploaded). Get a free key at aistudio.google.com/apikey. Charlie uses it to answer anything outside his built-in commands.</p>
+      </div>
       <button class="reset-btn" id="resetMemoryBtn">FORGET ME</button>
     </div>
   </div>

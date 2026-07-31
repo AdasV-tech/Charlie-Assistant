@@ -439,7 +439,9 @@ body[data-state="speaking"] .status-label { color: var(--cyan); }
 }
 
 .control-group select,
-.control-group input[type="range"] {
+.control-group input[type="range"],
+.control-group input[type="text"],
+.control-group input[type="password"] {
   background: var(--panel);
   border: 1px solid var(--line);
   color: var(--text);
@@ -447,6 +449,13 @@ body[data-state="speaking"] .status-label { color: var(--cyan); }
   padding: 6px;
   font-family: var(--font-body);
   accent-color: var(--cyan);
+}
+
+.control-group .control-hint {
+  font-size: 10px;
+  color: var(--text-dim);
+  line-height: 1.4;
+  margin: 0;
 }
 
 .reset-btn {
@@ -464,6 +473,22 @@ body[data-state="speaking"] .status-label { color: var(--cyan); }
   margin-top: 4px;
 }
 .reset-btn:hover { background: rgba(255, 92, 108, 0.1); }
+
+.save-btn {
+  background: none;
+  border: 1px solid var(--cyan);
+  color: var(--cyan);
+  font-family: var(--font-display);
+  font-size: 9px;
+  letter-spacing: 1px;
+  padding: 8px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  white-space: nowrap;
+  width: 100%;
+  margin-top: 4px;
+}
+.save-btn:hover { background: rgba(62, 230, 255, 0.1); }
 
 .version-badge {
   position: fixed;

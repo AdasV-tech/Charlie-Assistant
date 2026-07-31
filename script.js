@@ -40,6 +40,9 @@ const nameModal   = document.getElementById('nameModal');
 const nameInput   = document.getElementById('nameInput');
 const nameSubmit  = document.getElementById('nameSubmit');
 
+const geminiKeyInput   = document.getElementById('geminiKeyInput');
+const geminiKeySaveBtn = document.getElementById('geminiKeySaveBtn');
+
 /* ---------------------------------------------------------
    2. MEMORY (localStorage)
    Charlie remembers the user's name and a couple of voice
@@ -64,6 +67,28 @@ function saveMemory(memory) {
 }
 
 let memory = loadMemory();
+
+// Gemini API key — kept separate from `memory` and never bundled into the
+// source. This site is a public static page (GitHub Pages), so a key baked
+// into script.js would be visible to every visitor; instead each user pastes
+// their own key in Settings and it stays in this browser's localStorage.
+const GEMINI_KEY_STORAGE = 'charlie_gemini_key_v1';
+
+function loadGeminiKey() {
+  return localStorage.getItem(GEMINI_KEY_STORAGE) || '';
+}
+
+function saveGeminiKey(key) {
+  localStorage.setItem(GEMINI_KEY_STORAGE, key.trim());
+}
+
+if (geminiKeyInput) geminiKeyInput.value = loadGeminiKey();
+if (geminiKeySaveBtn) {
+  geminiKeySaveBtn.addEventListener('click', () => {
+    saveGeminiKey(geminiKeyInput.value);
+    addLogLine('Gemini API key saved to this device.', 'system');
+  });
+}
 
 /* ---------------------------------------------------------
    3. UI STATE MACHINE
@@ -719,10 +744,56 @@ function handleCommand(transcript) {
     return;
   }
 
-  // No keyword command matched — last resort, try it as an arithmetic
-  // question ("what is 5 plus 3") before giving up.
+  // No keyword command matched — try it as an arithmetic question
+  // ("what is 5 plus 3") before falling back to Gemini for anything else.
   const mathAnswer = solveMathQuestion(transcript);
-  speak(mathAnswer !== null ? mathAnswer : "I don't have an answer for that yet, but you can teach me more commands in script.js.");
+  if (mathAnswer !== null) {
+    speak(mathAnswer);
+    return;
+  }
+
+  askGemini(transcript).then((text) => speak(text));
+}
+
+/* ---------------------------------------------------------
+   GEMINI FALLBACK
+   Anything that isn't a built-in command or a math question
+   gets sent to Google's Gemini API so Charlie can answer
+   open-ended questions instead of just admitting defeat.
+   Requires a user-supplied API key saved in Settings (see
+   GEMINI_KEY_STORAGE above) — nothing is bundled or committed.
+   --------------------------------------------------------- */
+const GEMINI_MODEL = 'gemini-flash-latest';
+
+async function askGemini(question) {
+  const apiKey = loadGeminiKey();
+  if (!apiKey) {
+    return "I don't have an answer for that yet. Add a free Gemini API key in Settings and I can look things up for you.";
+  }
+
+  try {
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${encodeURIComponent(apiKey)}`;
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [{ parts: [{ text: question }] }]
+      })
+    });
+
+    if (!res.ok) {
+      if (res.status === 400 || res.status === 401 || res.status === 403) {
+        return "That Gemini API key doesn't seem to work. Double-check it in Settings.";
+      }
+      return "I couldn't reach Gemini just now. Try again in a moment.";
+    }
+
+    const data = await res.json();
+    const text = data?.candidates?.[0]?.content?.parts?.map((part) => part.text).join(' ').trim();
+    return text || "Gemini didn't return an answer for that.";
+  } catch (e) {
+    return "I couldn't reach Gemini — check your internet connection and try again.";
+  }
 }
 
 /* ---------------------------------------------------------
