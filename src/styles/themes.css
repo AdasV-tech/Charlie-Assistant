@@ -1,0 +1,138 @@
+/* =========================================================
+   CHARLIE ASSISTANT — THEMES
+   Each theme only ever overrides the color tokens defined in main.css's
+   :root block — every component already renders purely from those tokens
+   (including translucent glows, via the "-rgb" triplets), so no component
+   rule anywhere needs to know how many themes exist or what they look like.
+
+   Applied via data-theme="..." on <html> — see src/theme/themeManager.js.
+   "default" restates :root's own values explicitly (rather than relying on
+   inheritance) so every theme is equally selectable and inspectable here.
+   ========================================================= */
+
+[data-theme='default'] {
+  --bg: #060a10;
+  --bg-rgb: 6 10 16;
+  --panel: #0c141d;
+  --panel-rgb: 12 20 29;
+  --line: #1c2a38;
+  --cyan: #3ee6ff;
+  --cyan-rgb: 62 230 255;
+  --cyan-dim: #1a7a8f;
+  --amber: #ffb454;
+  --amber-rgb: 255 180 84;
+  --red: #ff5c6c;
+  --red-rgb: 255 92 108;
+  --text: #d9ecf5;
+  --text-dim: #6f8ba0;
+}
+
+[data-theme='midnight'] {
+  --bg: #05070f;
+  --bg-rgb: 5 7 15;
+  --panel: #0b0f1c;
+  --panel-rgb: 11 15 28;
+  --line: #1e2740;
+  --cyan: #6c8cff;
+  --cyan-rgb: 108 140 255;
+  --cyan-dim: #35427a;
+  --amber: #ffd166;
+  --amber-rgb: 255 209 102;
+  --red: #ff6b6b;
+  --red-rgb: 255 107 107;
+  --text: #e6ebfa;
+  --text-dim: #7b85a8;
+}
+
+[data-theme='cyber-blue'] {
+  --bg: #010409;
+  --bg-rgb: 1 4 9;
+  --panel: #071019;
+  --panel-rgb: 7 16 25;
+  --line: #14324a;
+  --cyan: #00e5ff;
+  --cyan-rgb: 0 229 255;
+  --cyan-dim: #0f6d82;
+  --amber: #fc0;
+  --amber-rgb: 255 204 0;
+  --red: #ff3b5c;
+  --red-rgb: 255 59 92;
+  --text: #e0faff;
+  --text-dim: #5a8ba3;
+}
+
+[data-theme='emerald'] {
+  --bg: #040d0a;
+  --bg-rgb: 4 13 10;
+  --panel: #0a1815;
+  --panel-rgb: 10 24 21;
+  --line: #1c3a30;
+  --cyan: #2ee6a8;
+  --cyan-rgb: 46 230 168;
+  --cyan-dim: #146650;
+  --amber: #ffd35c;
+  --amber-rgb: 255 211 92;
+  --red: #ff5c6c;
+  --red-rgb: 255 92 108;
+  --text: #dcf7ec;
+  --text-dim: #6fa38d;
+}
+
+[data-theme='purple'] {
+  --bg: #0a0612;
+  --bg-rgb: 10 6 18;
+  --panel: #150c22;
+  --panel-rgb: 21 12 34;
+  --line: #362148;
+  --cyan: #b066ff;
+  --cyan-rgb: 176 102 255;
+  --cyan-dim: #6a3aa8;
+  --amber: #ffb454;
+  --amber-rgb: 255 180 84;
+  --red: #ff5c8a;
+  --red-rgb: 255 92 138;
+  --text: #f0e6fc;
+  --text-dim: #9782b8;
+}
+
+[data-theme='orange'] {
+  --bg: #0d0704;
+  --bg-rgb: 13 7 4;
+  --panel: #1a0f09;
+  --panel-rgb: 26 15 9;
+  --line: #3d2415;
+  --cyan: #ff9d42;
+  --cyan-rgb: 255 157 66;
+  --cyan-dim: #8a4e1e;
+
+  /* The "amber" slot doubles as the thinking-state accent — kept cool here
+     so it still reads as visually distinct from this theme's warm primary. */
+  --amber: #4fc3ff;
+  --amber-rgb: 79 195 255;
+  --red: #ff5c5c;
+  --red-rgb: 255 92 92;
+  --text: #ffe9d9;
+  --text-dim: #a9846c;
+}
+
+[data-theme='minimal'] {
+  --bg: #0a0a0c;
+  --bg-rgb: 10 10 12;
+  --panel: #131316;
+  --panel-rgb: 19 19 22;
+  --line: #2a2a30;
+  --cyan: #9aa5b1;
+  --cyan-rgb: 154 165 177;
+  --cyan-dim: #5c6570;
+  --amber: #c9a875;
+  --amber-rgb: 201 168 117;
+  --red: #d97a7a;
+  --red-rgb: 217 122 122;
+  --text: #e8e8ea;
+  --text-dim: #7a7a82;
+
+  /* Restrained by name — noticeably less blur and glow than the other
+     six, on top of its own desaturated palette above. */
+  --glass-blur: 8px;
+  --shadow-elevated: 0 14px 34px rgb(0 0 0 / 35%);
+}

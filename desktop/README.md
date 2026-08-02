@@ -50,7 +50,7 @@ specific version, so it never goes stale as new versions ship.)
 |---|---|
 | "Charlie, what time is it" | Speaks the current time |
 | "Charlie, open notepad" / "open chrome" | Launches the app (see `apps.json` below) |
-| "Charlie, run `<any shell command>`" | Executes it directly and reads back the output |
+| "Charlie, run `<any shell command>`" | Executes it directly and reads back the output — or, if it looks destructive, asks you to say "confirm" first (see "Safety notes" below) |
 | "Charlie, search google for cast iron recipes" | Opens a browser search |
 | "Charlie, search youtube for lofi beats" | Opens a YouTube search |
 | "Charlie, create a file called notes.txt with buy milk" | Saves that literal text to `~/CharlieFiles/notes.txt` |
@@ -98,44 +98,63 @@ key (`charlie_config.json`), your `apps.json`, and everything in
 
 A couple of things worth knowing:
 
+- Updates only ever come from **tagged GitHub Releases**, never from
+  whatever currently happens to be on `main` — the same source the packaged
+  `.exe` path always used. Pushing to `main` alone no longer updates anyone;
+  a maintainer has to deliberately cut and push a release tag.
+- Every downloaded update — the plain script or a platform build — is
+  verified against a `SHA256SUMS.txt` published in that same release
+  (generated during the CI build, from the exact bytes being released) before
+  it's applied. If the checksum doesn't match, or the release doesn't have
+  one, Charlie refuses to update rather than guessing. The plain-script path
+  is also still syntax-checked on top of that.
 - If you're running the plain script, an update rewrites `charlie_pc.py` in
   place and restarts itself immediately — you'll see it happen, no action
   needed from you.
 - If you're running the packaged .exe, it downloads the matching platform
-  build from the latest GitHub release and swaps it in. This path is
-  best-effort: it's implemented following the standard pattern for
+  build from the latest GitHub release, verifies it, and swaps it in. This
+  path is best-effort: it's implemented following the standard pattern for
   self-replacing a running Windows executable, but wasn't exercised against
-  an actual published release while building this (no Windows machine or
-  release available in the environment this was built in) — worth a real
-  test after your first tagged release, per the note in "Packaging" below.
-- Every downloaded update is syntax-checked before it's applied — if a bad
-  push ever made it to `main`, Charlie refuses to install it rather than
-  bricking itself with a broken update.
+  an actual published release while building this — worth a real test after
+  your first tagged release, per the note in "Packaging" below.
 - Pass `--no-update` to skip the check on a given launch (offline use, or if
   you're intentionally running an older/modified version).
-- This does mean Charlie trusts whatever is on `main` of this repo — same
-  trust model as any self-updating tool pointed at your own GitHub repo.
-  Worth keeping in mind if you ever add collaborators.
+- This narrows the trust boundary to "the release process itself" instead of
+  "anyone who can push to `main`," and catches transport corruption — but a
+  checksum isn't a signature. It doesn't protect against someone who can
+  tamper with a release's assets and its `SHA256SUMS.txt` together (e.g. a
+  compromised repo or CI). GPG-signing releases with a key kept outside the
+  repo/CI entirely would close that gap, if you want to take this further.
 
 ## Safety notes — read this
 
 This build was built with **open-ended command execution**, meaning:
 
 - "Charlie, run `<command>`" executes exactly what it hears via your shell —
-  no whitelist, no confirmation, no undo.
+  there's still no whitelist. There is now a narrow safety net: a command
+  that looks destructive (recursive deletes, disk formatting, `git push
+  --force`/`reset --hard`, `shutdown`, and similar — see
+  `_DESTRUCTIVE_PATTERNS` in `charlie_pc.py`) is staged instead of run
+  immediately, and Charlie asks you to say "confirm" within 20 seconds before
+  it actually executes. Say anything else (or nothing) and it's dropped
+  without running. Anything that *doesn't* match one of those patterns still
+  runs exactly as before, with no confirmation — this is a speed bump for the
+  most common costly mistakes, not a real sandbox.
 - Speech recognition can mishear you. "Charlie, run **delete** the temp
-  folder" transcribed wrong is still a command that runs.
+  folder" transcribed wrong is still a command that runs if it doesn't
+  happen to match a destructive pattern — the confirmation gate reduces this
+  risk for the commands it recognizes, it doesn't eliminate it.
 - Gemini's own text answers are **never** auto-executed — only things you
   explicitly prefix with "run"/"execute" hit the shell. That boundary is
   intentional: turning free-form AI text straight into shell commands is a
   known injection risk, so it isn't wired that way here even though the
   "run" path itself is unrestricted.
 
-If you want a safety net without giving up the open-ended design, reasonable
-options going forward: run Charlie under a non-admin user account, alias
-`run_shell_command` to require a confirmation phrase, or maintain a personal
-denylist of destructive commands. None of that is built in right now — this
-version does exactly what you asked for, unfiltered.
+If you want a stronger safety net than the confirmation gate, reasonable
+options going forward: run Charlie under a non-admin user account, require a
+confirmation phrase for *every* shell command rather than just the
+recognized destructive patterns, or maintain your own denylist/allowlist on
+top of `_DESTRUCTIVE_PATTERNS`.
 
 ## Uninstalling
 

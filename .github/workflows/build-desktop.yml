@@ -84,6 +84,8 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
+
       - uses: actions/download-artifact@v4
         with:
           path: artifacts
@@ -95,9 +97,24 @@ jobs:
             [ -d "$dir" ] && zip -r -j "../${dir}.zip" "$dir"
           done
 
+      # charlie_pc.py's own auto-updater fetches this exact SHA256SUMS.txt to
+      # verify whatever it downloads before applying it — see
+      # _expected_sha256() in desktop/charlie_pc.py. Computed here, in the
+      # same run that builds and uploads the assets, from the exact bytes
+      # about to be released.
+      - name: Stage the plain script and compute checksums
+        run: |
+          cp desktop/charlie_pc.py charlie_pc.py
+          sha256sum charlie-windows.zip charlie-macos.zip charlie-linux.zip \
+            artifacts/charlie-windows-installer/CharlieSetup.exe charlie_pc.py \
+            | awk '{ name = $2; sub(/.*\//, "", name); print $1, name }' > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+
       - name: Create release
         uses: softprops/action-gh-release@v2
         with:
           files: |
             *.zip
             artifacts/charlie-windows-installer/CharlieSetup.exe
+            charlie_pc.py
+            SHA256SUMS.txt

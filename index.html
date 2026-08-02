@@ -1,254 +1,578 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Charlie Assistant</title>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Charlie Assistant</title>
+    <script>
+      // Applies the saved theme before first paint so reloading never
+      // flashes the default theme first. Reads the same localStorage key
+      // as THEME_KEY in src/store/stores.js — keep the two in sync if that
+      // ever changes. Runs before any module loads, so it can't import it.
+      (function () {
+        var saved = localStorage.getItem('charlie_theme_v1');
+        if (saved) document.documentElement.dataset.theme = saved;
+      })();
+    </script>
+    <meta
+      name="description"
+      content="Charlie — a browser-based personal AI voice assistant with a HUD-style interface, a food analyzer, and daily planning tools. Runs entirely client-side."
+    />
+    <meta name="theme-color" content="#060a10" />
+    <meta property="og:title" content="Charlie Assistant" />
+    <meta
+      property="og:description"
+      content="A browser-based personal AI voice assistant with a HUD-style interface, a food analyzer, and daily planning tools."
+    />
+    <meta property="og:type" content="website" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
 
-  <!-- Google Fonts: a technical display face + a clean body face -->
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700;900&family=Rajdhani:wght@400;500;600;700&display=swap" rel="stylesheet" />
+    <!-- Google Fonts: a technical display face + a clean body face -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700;900&family=Rajdhani:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+  </head>
+  <body>
+    <!-- Background grid / scanline layer, purely decorative -->
+    <div class="bg-grid"></div>
+    <div class="bg-vignette"></div>
 
-  <link rel="stylesheet" href="style.css" />
-</head>
-<body>
-
-  <!-- Background grid / scanline layer, purely decorative -->
-  <div class="bg-grid"></div>
-  <div class="bg-vignette"></div>
-
-  <main class="app">
-
-    <!-- Top bar: assistant name + connection/status readout + settings -->
-    <header class="topbar">
-      <div class="brand">
-        <span class="brand-mark">C</span>
-        <span class="brand-name">CHARLIE<span class="brand-sub">ASSISTANT</span></span>
-      </div>
-      <div class="topbar-right">
-        <div class="clock" id="clockReadout">00:00:00</div>
-        <button class="settings-btn" id="settingsBtn" aria-label="Open settings">
-          <svg viewBox="0 0 24 24" aria-hidden="true">
-            <path d="M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7z" fill="none" stroke-width="1.6"/>
-            <path d="M19.4 13.5a7.6 7.6 0 0 0 0-3l2-1.5-2-3.4-2.4 1a7.7 7.7 0 0 0-2.6-1.5L14 2h-4l-.4 2.6a7.7 7.7 0 0 0-2.6 1.5l-2.4-1-2 3.4 2 1.5a7.6 7.6 0 0 0 0 3l-2 1.5 2 3.4 2.4-1a7.7 7.7 0 0 0 2.6 1.5L10 22h4l.4-2.6a7.7 7.7 0 0 0 2.6-1.5l2.4 1 2-3.4-2-1.5z" fill="none" stroke-width="1.3" stroke-linejoin="round"/>
-          </svg>
-        </button>
-      </div>
-    </header>
-
-    <div class="alert-banner hidden" id="alertBanner" role="alert" aria-live="assertive"></div>
-
-    <!-- Tab navigation between the four Charlie V2 modes -->
-    <nav class="tabbar" id="tabbar">
-      <button class="tab-btn active" data-tab="assistant">ASSISTANT</button>
-      <button class="tab-btn" data-tab="scanner">SCANNER</button>
-      <button class="tab-btn" data-tab="dashboard">DASHBOARD</button>
-      <button class="tab-btn" data-tab="profile">PROFILE</button>
-    </nav>
-
-    <!-- ================= TAB: ASSISTANT ================= -->
-    <section class="tab-panel active" id="tab-assistant" data-tab-panel="assistant">
-
-      <!-- Center stage: the glowing core + status ring -->
-      <section class="core-stage">
-        <div class="core-wrap" id="coreWrap">
-          <svg class="core-rings" viewBox="0 0 400 400" aria-hidden="true">
-            <circle class="ring ring-outer" cx="200" cy="200" r="180" />
-            <circle class="ring ring-mid" cx="200" cy="200" r="150" />
-            <circle class="ring ring-inner" cx="200" cy="200" r="120" />
-            <!-- tick marks around the outer ring -->
-            <g class="ticks" id="tickGroup"></g>
-          </svg>
-
-          <button class="core-button" id="coreButton" aria-label="Activate microphone">
-            <span class="core-glow"></span>
-            <svg class="mic-icon" viewBox="0 0 24 24" aria-hidden="true">
-              <path d="M12 14a3 3 0 0 0 3-3V6a3 3 0 0 0-6 0v5a3 3 0 0 0 3 3z" />
-              <path d="M19 11a7 7 0 0 1-14 0" fill="none" stroke-width="1.6" />
-              <path d="M12 18v3" stroke-width="1.6" />
+    <main class="app">
+      <!-- Top bar: assistant name + connection/status readout + settings -->
+      <header class="topbar">
+        <div class="brand">
+          <span class="brand-mark">C</span>
+          <span class="brand-name">CHARLIE<span class="brand-sub">ASSISTANT</span></span>
+        </div>
+        <div class="topbar-right">
+          <div class="clock" id="clockReadout">00:00:00</div>
+          <button class="icon-btn" id="searchBtn" aria-label="Search">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <circle cx="11" cy="11" r="7" fill="none" stroke-width="1.6" />
+              <path d="M20 20l-4.5-4.5" fill="none" stroke-width="1.6" stroke-linecap="round" />
+            </svg>
+          </button>
+          <button class="icon-btn" id="notificationsBtn" aria-label="Notifications">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path
+                d="M12 4a5 5 0 0 0-5 5v3.2c0 .5-.2 1-.5 1.4L5 15.5c-.6.8 0 2 1 2h12c1 0 1.6-1.2 1-2l-1.5-2c-.3-.4-.5-.9-.5-1.4V9a5 5 0 0 0-5-5z"
+                fill="none"
+                stroke-width="1.5"
+                stroke-linejoin="round"
+              />
+              <path
+                d="M10 19.5a2 2 0 0 0 4 0"
+                fill="none"
+                stroke-width="1.5"
+                stroke-linecap="round"
+              />
+            </svg>
+            <span class="notification-badge hidden" id="notificationBadge">0</span>
+          </button>
+          <button class="icon-btn" id="settingsBtn" aria-label="Open settings">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path
+                d="M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7z"
+                fill="none"
+                stroke-width="1.6"
+              />
+              <path
+                d="M19.4 13.5a7.6 7.6 0 0 0 0-3l2-1.5-2-3.4-2.4 1a7.7 7.7 0 0 0-2.6-1.5L14 2h-4l-.4 2.6a7.7 7.7 0 0 0-2.6 1.5l-2.4-1-2 3.4 2 1.5a7.6 7.6 0 0 0 0 3l-2 1.5 2 3.4 2.4-1a7.7 7.7 0 0 0 2.6 1.5L10 22h4l.4-2.6a7.7 7.7 0 0 0 2.6-1.5l2.4 1 2-3.4-2-1.5z"
+                fill="none"
+                stroke-width="1.3"
+                stroke-linejoin="round"
+              />
             </svg>
           </button>
         </div>
+      </header>
 
-        <!-- Waveform animation, only lively while listening/speaking -->
-        <div class="waveform" id="waveform">
-          <span></span><span></span><span></span><span></span><span></span>
-          <span></span><span></span><span></span><span></span><span></span>
-          <span></span><span></span><span></span>
-        </div>
+      <div class="toast-stack" id="toastStack" role="status" aria-live="polite"></div>
 
-        <div class="status-label" id="statusLabel">SLEEPING</div>
-      </section>
-
-      <!-- Transcript / conversation log -->
-      <section class="console">
-        <div class="console-header">
-          <span>TRANSCRIPT</span>
-          <button class="clear-btn" id="clearBtn">CLEAR</button>
-        </div>
-        <div class="console-log" id="consoleLog">
-          <div class="log-line log-system">Charlie is powered down. Tap the core to wake me up.</div>
-        </div>
-      </section>
-    </section>
-
-    <!-- ================= TAB: FOOD SCANNER ================= -->
-    <section class="tab-panel" id="tab-scanner" data-tab-panel="scanner">
-      <div class="panel-card">
-        <h2 class="panel-title">FOOD SCANNER</h2>
-        <p class="panel-sub">Take or upload a photo for your own reference, then tell Charlie what it is so it can look up an estimate from its local food table.</p>
-
-        <div class="scanner-row">
-          <label class="file-btn" for="foodPhotoInput">
-            📷 SCAN FOOD
-            <input type="file" id="foodPhotoInput" accept="image/*" capture="environment" hidden />
-          </label>
-          <button class="secondary-btn" id="clearScanBtn" type="button">CLEAR</button>
-        </div>
-
-        <div class="photo-preview hidden" id="photoPreviewWrap">
-          <img id="photoPreview" alt="Food photo preview" />
-        </div>
-
-        <div class="scan-search">
-          <label for="foodSearchInput">WHAT IS THIS FOOD?</label>
-          <input type="text" id="foodSearchInput" list="foodSuggestions" placeholder="Type a food name, e.g. Chicken breast" autocomplete="off" />
-          <datalist id="foodSuggestions"></datalist>
-          <button class="primary-btn" id="analyzeFoodBtn" type="button">ANALYZE</button>
-        </div>
-
-        <div class="quick-foods" id="quickFoods"></div>
-
-        <div class="food-result hidden" id="foodResult"></div>
-
-        <div class="save-row hidden" id="saveRow">
-          <div class="save-row-field">
-            <label for="mealNameInput">MEAL NAME (OPTIONAL)</label>
-            <input type="text" id="mealNameInput" placeholder="e.g. Lunch with the team" maxlength="40" />
+      <!-- Notification Center panel -->
+      <div class="popover-overlay hidden" id="notificationPanelOverlay">
+        <div class="popover-panel" id="notificationPanel">
+          <div class="popover-header">
+            <span>NOTIFICATIONS</span>
+            <button class="clear-btn" id="clearNotificationsBtn">CLEAR</button>
           </div>
-          <button class="primary-btn" id="saveMealBtn" type="button">💾 SAVE TO HISTORY</button>
+          <ul class="notification-list" id="notificationList"></ul>
+        </div>
+      </div>
+
+      <!-- Global search -->
+      <div class="popover-overlay hidden" id="searchOverlay">
+        <div class="popover-panel search-panel" id="searchPanel">
+          <input
+            type="text"
+            id="searchInput"
+            class="search-input"
+            placeholder="Search pages, settings, notes, food history..."
+            autocomplete="off"
+          />
+          <ul class="search-results" id="searchResults"></ul>
+        </div>
+      </div>
+
+      <!-- Tab navigation between Charlie's modes -->
+      <nav class="tabbar" id="tabbar">
+        <button class="tab-btn active" data-tab="assistant">ASSISTANT</button>
+        <button class="tab-btn" data-tab="scanner">SCANNER</button>
+        <button class="tab-btn" data-tab="dashboard">DASHBOARD</button>
+        <button class="tab-btn" data-tab="projects">PROJECTS</button>
+        <button class="tab-btn" data-tab="profile">PROFILE</button>
+      </nav>
+
+      <!-- ================= TAB: ASSISTANT ================= -->
+      <section class="tab-panel active" id="tab-assistant" data-tab-panel="assistant">
+        <!-- Center stage: the glowing core + status ring -->
+        <section class="core-stage">
+          <div class="core-wrap" id="coreWrap">
+            <svg class="core-rings" viewBox="0 0 400 400" aria-hidden="true">
+              <circle class="ring ring-outer" cx="200" cy="200" r="180" />
+              <circle class="ring ring-mid" cx="200" cy="200" r="150" />
+              <circle class="ring ring-inner" cx="200" cy="200" r="120" />
+              <!-- tick marks around the outer ring -->
+              <g class="ticks" id="tickGroup"></g>
+            </svg>
+
+            <button class="core-button" id="coreButton" aria-label="Activate microphone">
+              <span class="core-glow"></span>
+              <svg class="mic-icon" viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M12 14a3 3 0 0 0 3-3V6a3 3 0 0 0-6 0v5a3 3 0 0 0 3 3z" />
+                <path d="M19 11a7 7 0 0 1-14 0" fill="none" stroke-width="1.6" />
+                <path d="M12 18v3" stroke-width="1.6" />
+              </svg>
+            </button>
+          </div>
+
+          <!-- Waveform animation, only lively while listening/speaking -->
+          <div class="waveform" id="waveform">
+            <span></span><span></span><span></span><span></span><span></span> <span></span
+            ><span></span><span></span><span></span><span></span> <span></span><span></span
+            ><span></span>
+          </div>
+
+          <div class="status-label" id="statusLabel">SLEEPING</div>
+        </section>
+
+        <!-- Transcript / conversation log -->
+        <section class="console">
+          <div class="console-header">
+            <span>TRANSCRIPT</span>
+            <button class="clear-btn" id="clearBtn">CLEAR</button>
+          </div>
+          <div class="console-log" id="consoleLog"></div>
+        </section>
+      </section>
+
+      <!-- ================= TAB: FOOD SCANNER ================= -->
+      <section class="tab-panel" id="tab-scanner" data-tab-panel="scanner">
+        <div class="panel-card">
+          <h2 class="panel-title">FOOD ANALYZER PRO</h2>
+          <p class="panel-sub">
+            Take or upload a photo for your own reference, then tell Charlie what it is so it can
+            look up an estimate from its local food table.
+          </p>
+
+          <div class="scanner-row">
+            <label class="file-btn" for="foodPhotoInput">
+              📷 SCAN FOOD
+              <input
+                type="file"
+                id="foodPhotoInput"
+                accept="image/*"
+                capture="environment"
+                hidden
+              />
+            </label>
+            <button class="secondary-btn" id="clearScanBtn" type="button">CLEAR</button>
+          </div>
+
+          <div class="photo-preview hidden" id="photoPreviewWrap">
+            <img id="photoPreview" alt="Food photo preview" />
+          </div>
+
+          <div class="scan-search">
+            <label for="foodSearchInput">WHAT IS THIS FOOD?</label>
+            <input
+              type="text"
+              id="foodSearchInput"
+              list="foodSuggestions"
+              placeholder="Type a food name, e.g. Chicken breast"
+              autocomplete="off"
+            />
+            <datalist id="foodSuggestions"></datalist>
+            <button class="primary-btn" id="analyzeFoodBtn" type="button">ANALYZE</button>
+          </div>
+
+          <div class="quick-foods" id="quickFoods"></div>
+
+          <div class="food-result hidden" id="foodResult"></div>
+
+          <div class="save-row hidden" id="saveRow">
+            <div class="save-row-field">
+              <label for="mealNameInput">MEAL NAME (OPTIONAL)</label>
+              <input
+                type="text"
+                id="mealNameInput"
+                placeholder="e.g. Lunch with the team"
+                maxlength="40"
+              />
+            </div>
+            <button class="primary-btn" id="saveMealBtn" type="button">💾 SAVE TO HISTORY</button>
+          </div>
+
+          <p class="disclaimer">
+            Food analysis is an estimate and may not be perfectly accurate. This prototype matches a
+            name you provide against a small local food table — it does not use image recognition.
+          </p>
+
+          <h3 class="section-heading">HEALTH SCORE TREND</h3>
+          <div class="trend-chart" id="historyTrendChart"></div>
+
+          <h3 class="section-heading">FOOD HISTORY</h3>
+          <div class="history-toolbar">
+            <span id="historyCount">0 meals saved</span>
+            <div class="history-toolbar-actions">
+              <button class="filter-btn active" id="showAllHistoryBtn" type="button">ALL</button>
+              <button class="filter-btn" id="showFavouritesBtn" type="button">★ FAVOURITES</button>
+              <button class="secondary-btn" id="clearHistoryBtn" type="button">
+                CLEAR HISTORY
+              </button>
+            </div>
+          </div>
+          <ul class="history-list" id="foodHistoryList"></ul>
+        </div>
+      </section>
+
+      <!-- ================= TAB: DASHBOARD ================= -->
+      <section class="tab-panel" id="tab-dashboard" data-tab-panel="dashboard">
+        <div class="panel-card">
+          <h2 class="panel-title" id="greetingTitle">GOOD MORNING</h2>
+          <p class="panel-sub" id="greetingSub">Here's what's on the plan today.</p>
+
+          <div class="dashboard-scores">
+            <div class="dashboard-score-card">
+              <div class="score-ring" id="productivityScoreRing"></div>
+              <span class="dashboard-score-label">Productivity</span>
+              <span class="dashboard-score-caption" id="productivityScoreCaption"></span>
+            </div>
+            <div class="dashboard-score-card">
+              <div class="score-ring" id="healthScoreRing"></div>
+              <span class="dashboard-score-label">Health</span>
+              <span class="dashboard-score-caption" id="healthScoreCaption"></span>
+            </div>
+          </div>
+
+          <div class="quick-actions" id="quickActions"></div>
+
+          <div class="dashboard-widget-grid">
+            <div class="dashboard-widget" id="weatherWidget">
+              <div class="dashboard-widget-title">WEATHER</div>
+              <p class="dashboard-widget-status">Loading…</p>
+            </div>
+            <div class="dashboard-widget">
+              <div class="dashboard-widget-title">QUOTE OF THE DAY</div>
+              <p class="dashboard-widget-text" id="quoteText"></p>
+            </div>
+          </div>
+          <div class="dashboard-widget dashboard-widget--wide">
+            <div class="dashboard-widget-title">TODAY'S CHALLENGE</div>
+            <p class="dashboard-widget-text" id="challengeText"></p>
+          </div>
+
+          <div class="focus-box">
+            <div class="focus-label">TODAY'S FOCUS</div>
+            <div class="focus-text" id="focusText">No focus set yet — add one below.</div>
+          </div>
+
+          <div class="mode-row">
+            <button class="mode-btn" id="studyModeBtn" type="button">▶ START STUDY MODE</button>
+            <button class="mode-btn" id="workoutModeBtn" type="button">▶ START WORKOUT MODE</button>
+          </div>
+          <div class="timer-box hidden" id="timerBox">
+            <span id="timerLabel">STUDY MODE</span>
+            <span id="timerReadout">25:00</span>
+            <button id="timerStopBtn" type="button">STOP</button>
+          </div>
+
+          <h3 class="section-heading">DAILY SUGGESTIONS</h3>
+          <div class="suggestion-add">
+            <input type="text" id="suggestionInput" placeholder="e.g. Drink more water" />
+            <button class="secondary-btn" id="addSuggestionBtn" type="button">ADD</button>
+          </div>
+          <ul class="suggestion-list" id="suggestionList"></ul>
+
+          <h3 class="section-heading">RECENT CONVERSATIONS</h3>
+          <ul class="recent-conversations" id="recentConversations"></ul>
+        </div>
+      </section>
+
+      <!-- ================= TAB: PROJECT MANAGER ================= -->
+      <section class="tab-panel" id="tab-projects" data-tab-panel="projects">
+        <div class="panel-card">
+          <h2 class="panel-title">PROJECT MANAGER</h2>
+          <p class="panel-sub">Track progress, priority, and deadlines across everything you're working on.</p>
+
+          <div class="project-stats" id="projectStats"></div>
+
+          <button class="primary-btn" id="newProjectBtn" type="button">+ NEW PROJECT</button>
+
+          <form class="project-form hidden" id="projectForm">
+            <input type="hidden" id="projectEditingId" value="" />
+            <label for="projectNameInput">NAME</label>
+            <input type="text" id="projectNameInput" maxlength="60" required />
+
+            <label for="projectDescInput">DESCRIPTION</label>
+            <textarea id="projectDescInput" rows="2"></textarea>
+
+            <div class="project-form-row">
+              <div>
+                <label for="projectStatusInput">STATUS</label>
+                <select id="projectStatusInput">
+                  <option value="not-started">Not Started</option>
+                  <option value="in-progress">In Progress</option>
+                  <option value="on-hold">On Hold</option>
+                  <option value="completed">Completed</option>
+                </select>
+              </div>
+              <div>
+                <label for="projectPriorityInput">PRIORITY</label>
+                <select id="projectPriorityInput">
+                  <option value="low">Low</option>
+                  <option value="medium" selected>Medium</option>
+                  <option value="high">High</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="project-form-row">
+              <div>
+                <label for="projectCategoryInput">CATEGORY</label>
+                <input type="text" id="projectCategoryInput" placeholder="e.g. Work" maxlength="30" />
+              </div>
+              <div>
+                <label for="projectDeadlineInput">DEADLINE</label>
+                <input type="date" id="projectDeadlineInput" />
+              </div>
+            </div>
+
+            <label for="projectTagsInput">TAGS (comma separated)</label>
+            <input type="text" id="projectTagsInput" placeholder="e.g. urgent, client-work" />
+
+            <label for="projectProgressInput">
+              PROGRESS: <span id="projectProgressValue">0%</span>
+            </label>
+            <input type="range" id="projectProgressInput" min="0" max="100" step="5" value="0" />
+
+            <label for="projectNotesInput">NOTES</label>
+            <textarea id="projectNotesInput" rows="2"></textarea>
+
+            <label for="projectAttachmentInput">ATTACHMENT REFERENCE (optional)</label>
+            <input
+              type="text"
+              id="projectAttachmentInput"
+              placeholder="e.g. a local file path or link — not an upload"
+            />
+            <button class="secondary-btn" type="button" id="addAttachmentBtn">ADD REFERENCE</button>
+            <ul class="attachment-list" id="attachmentList"></ul>
+
+            <div class="project-form-actions">
+              <button class="primary-btn" id="saveProjectBtn" type="submit">SAVE PROJECT</button>
+              <button class="secondary-btn" id="cancelProjectBtn" type="button">CANCEL</button>
+            </div>
+          </form>
+
+          <div class="project-controls">
+            <input type="text" id="projectSearchInput" placeholder="Search projects..." />
+            <select id="projectFilterStatus">
+              <option value="">All statuses</option>
+              <option value="not-started">Not Started</option>
+              <option value="in-progress">In Progress</option>
+              <option value="on-hold">On Hold</option>
+              <option value="completed">Completed</option>
+            </select>
+            <select id="projectSortBy">
+              <option value="updatedAt">Recently updated</option>
+              <option value="deadline">Deadline</option>
+              <option value="priority">Priority</option>
+              <option value="progress">Progress</option>
+              <option value="name">Name</option>
+            </select>
+          </div>
+
+          <ul class="project-list" id="projectList"></ul>
+        </div>
+      </section>
+
+      <!-- ================= TAB: PROFILE ================= -->
+      <section class="tab-panel" id="tab-profile" data-tab-panel="profile">
+        <div class="panel-card">
+          <h2 class="panel-title">PERSONAL PROFILE</h2>
+          <p class="panel-sub">
+            Charlie uses this to personalise greetings and the daily dashboard. Everything stays on
+            this device.
+          </p>
+
+          <form class="profile-form" id="profileForm">
+            <label for="profileName">NAME</label>
+            <input type="text" id="profileName" maxlength="24" />
+
+            <label for="profileAge">AGE</label>
+            <input type="number" id="profileAge" min="1" max="120" />
+
+            <label for="profileActivity">ACTIVITY LEVEL</label>
+            <select id="profileActivity">
+              <option value="">Select...</option>
+              <option value="Sedentary">Sedentary</option>
+              <option value="Lightly active">Lightly active</option>
+              <option value="Active">Active</option>
+              <option value="Very active">Very active</option>
+            </select>
+
+            <label for="profileGoals">GOALS (one per line)</label>
+            <textarea
+              id="profileGoals"
+              rows="3"
+              placeholder="Improve fitness&#10;Learn programming&#10;Build projects"
+            ></textarea>
+
+            <label for="profileActivities">FAVOURITE ACTIVITIES</label>
+            <input
+              type="text"
+              id="profileActivities"
+              placeholder="e.g. Swimming, coding, reading"
+            />
+
+            <button class="primary-btn" id="saveProfileBtn" type="submit">SAVE PROFILE</button>
+          </form>
+
+          <div class="profile-summary" id="profileSummary"></div>
+        </div>
+      </section>
+    </main>
+
+    <!-- Settings drawer -->
+    <div class="drawer-overlay hidden" id="drawerOverlay">
+      <div class="drawer-box">
+        <div class="drawer-header">
+          <span>SETTINGS</span>
+          <button id="drawerCloseBtn" aria-label="Close settings">✕</button>
         </div>
 
-        <p class="disclaimer">Food analysis is an estimate and may not be perfectly accurate. This prototype matches a name you provide against a small local food table — it does not use image recognition.</p>
+        <section class="settings-section">
+          <h3 class="settings-section-title">APPEARANCE</h3>
+          <div class="control-group">
+            <label for="themeSelect">THEME</label>
+            <select id="themeSelect"></select>
+          </div>
+        </section>
 
-        <h3 class="section-heading">FOOD HISTORY</h3>
-        <div class="history-toolbar">
-          <span id="historyCount">0 meals saved</span>
-          <button class="secondary-btn" id="clearHistoryBtn" type="button">CLEAR HISTORY</button>
-        </div>
-        <ul class="history-list" id="foodHistoryList"></ul>
+        <section class="settings-section">
+          <h3 class="settings-section-title">VOICE</h3>
+          <div class="control-group">
+            <label for="voiceSelect">VOICE</label>
+            <select id="voiceSelect"></select>
+          </div>
+          <div class="control-group">
+            <label for="rateRange">RATE</label>
+            <input type="range" id="rateRange" min="0.5" max="1.5" step="0.1" value="1" />
+          </div>
+          <div class="control-group">
+            <label for="pitchRange">PITCH</label>
+            <input type="range" id="pitchRange" min="0" max="2" step="0.1" value="1" />
+          </div>
+          <div class="control-group">
+            <label for="volumeRange">VOLUME</label>
+            <input type="range" id="volumeRange" min="0" max="1" step="0.05" value="1" />
+          </div>
+        </section>
+
+        <section class="settings-section">
+          <h3 class="settings-section-title">NOTIFICATIONS</h3>
+          <label class="settings-toggle">
+            <input type="checkbox" id="notificationsToggle" />
+            Enable browser notifications
+          </label>
+          <p class="control-hint">
+            Charlie will ask your browser for permission, then notify you when something finishes (a
+            timer, a saved item) while this tab isn't focused.
+          </p>
+        </section>
+
+        <section class="settings-section">
+          <h3 class="settings-section-title">ACCESSIBILITY</h3>
+          <label class="settings-toggle">
+            <input type="checkbox" id="reducedMotionToggle" />
+            Reduce motion
+          </label>
+          <label class="settings-toggle">
+            <input type="checkbox" id="largeTextToggle" />
+            Large text
+          </label>
+        </section>
+
+        <section class="settings-section">
+          <h3 class="settings-section-title">GEMINI API KEY</h3>
+          <div class="control-group">
+            <input
+              type="password"
+              id="geminiKeyInput"
+              placeholder="Paste your Gemini API key..."
+              autocomplete="off"
+              spellcheck="false"
+            />
+            <button class="save-btn" id="geminiKeySaveBtn">SAVE KEY</button>
+            <p class="control-hint">
+              Stored only in this browser (never uploaded). Get a free key at
+              aistudio.google.com/apikey. Charlie uses it to answer anything outside his built-in
+              commands.
+            </p>
+          </div>
+        </section>
+
+        <section class="settings-section">
+          <h3 class="settings-section-title">DATA</h3>
+          <div class="data-actions">
+            <button class="secondary-btn" id="exportDataBtn" type="button">⬇ EXPORT DATA</button>
+            <label class="secondary-btn" for="importDataInput">
+              ⬆ IMPORT DATA
+              <input type="file" id="importDataInput" accept="application/json" hidden />
+            </label>
+          </div>
+          <p class="control-hint">
+            Export everything Charlie has stored (profile, notes, food history, and more) as one
+            JSON file you keep — import it here, on this or another device, to restore it.
+          </p>
+          <button class="reset-btn" id="resetMemoryBtn">FORGET ME</button>
+        </section>
+
+        <section class="settings-section">
+          <h3 class="settings-section-title">DEVELOPER MODE</h3>
+          <label class="settings-toggle">
+            <input type="checkbox" id="developerModeToggle" />
+            Enable developer mode
+          </label>
+          <div class="developer-panel hidden" id="developerPanel"></div>
+        </section>
       </div>
-    </section>
-
-    <!-- ================= TAB: DASHBOARD ================= -->
-    <section class="tab-panel" id="tab-dashboard" data-tab-panel="dashboard">
-      <div class="panel-card">
-        <h2 class="panel-title" id="greetingTitle">GOOD MORNING</h2>
-        <p class="panel-sub" id="greetingSub">Here's what's on the plan today.</p>
-
-        <div class="focus-box">
-          <div class="focus-label">TODAY'S FOCUS</div>
-          <div class="focus-text" id="focusText">No focus set yet — add one below.</div>
-        </div>
-
-        <div class="mode-row">
-          <button class="mode-btn" id="studyModeBtn" type="button">▶ START STUDY MODE</button>
-          <button class="mode-btn" id="workoutModeBtn" type="button">▶ START WORKOUT MODE</button>
-        </div>
-        <div class="timer-box hidden" id="timerBox">
-          <span id="timerLabel">STUDY MODE</span>
-          <span id="timerReadout">25:00</span>
-          <button id="timerStopBtn" type="button">STOP</button>
-        </div>
-
-        <h3 class="section-heading">DAILY SUGGESTIONS</h3>
-        <div class="suggestion-add">
-          <input type="text" id="suggestionInput" placeholder="e.g. Drink more water" />
-          <button class="secondary-btn" id="addSuggestionBtn" type="button">ADD</button>
-        </div>
-        <ul class="suggestion-list" id="suggestionList"></ul>
-      </div>
-    </section>
-
-    <!-- ================= TAB: PROFILE ================= -->
-    <section class="tab-panel" id="tab-profile" data-tab-panel="profile">
-      <div class="panel-card">
-        <h2 class="panel-title">PERSONAL PROFILE</h2>
-        <p class="panel-sub">Charlie uses this to personalise greetings and the daily dashboard. Everything stays on this device.</p>
-
-        <form class="profile-form" id="profileForm">
-          <label for="profileName">NAME</label>
-          <input type="text" id="profileName" maxlength="24" />
-
-          <label for="profileAge">AGE</label>
-          <input type="number" id="profileAge" min="1" max="120" />
-
-          <label for="profileActivity">ACTIVITY LEVEL</label>
-          <select id="profileActivity">
-            <option value="">Select...</option>
-            <option value="Sedentary">Sedentary</option>
-            <option value="Lightly active">Lightly active</option>
-            <option value="Active">Active</option>
-            <option value="Very active">Very active</option>
-          </select>
-
-          <label for="profileGoals">GOALS (one per line)</label>
-          <textarea id="profileGoals" rows="3" placeholder="Improve fitness&#10;Learn programming&#10;Build projects"></textarea>
-
-          <label for="profileActivities">FAVOURITE ACTIVITIES</label>
-          <input type="text" id="profileActivities" placeholder="e.g. Swimming, coding, reading" />
-
-          <button class="primary-btn" id="saveProfileBtn" type="submit">SAVE PROFILE</button>
-        </form>
-
-        <div class="profile-summary" id="profileSummary"></div>
-      </div>
-    </section>
-
-  </main>
-
-  <!-- Settings drawer: voice, rate, pitch, memory reset -->
-  <div class="drawer-overlay hidden" id="drawerOverlay">
-    <div class="drawer-box">
-      <div class="drawer-header">
-        <span>SETTINGS</span>
-        <button id="drawerCloseBtn" aria-label="Close settings">✕</button>
-      </div>
-      <div class="control-group">
-        <label for="voiceSelect">VOICE</label>
-        <select id="voiceSelect"></select>
-      </div>
-      <div class="control-group">
-        <label for="rateRange">RATE</label>
-        <input type="range" id="rateRange" min="0.5" max="1.5" step="0.1" value="1" />
-      </div>
-      <div class="control-group">
-        <label for="pitchRange">PITCH</label>
-        <input type="range" id="pitchRange" min="0" max="2" step="0.1" value="1" />
-      </div>
-      <div class="control-group">
-        <label for="geminiKeyInput">GEMINI API KEY</label>
-        <input type="password" id="geminiKeyInput" placeholder="Paste your Gemini API key..." autocomplete="off" spellcheck="false" />
-        <button class="save-btn" id="geminiKeySaveBtn">SAVE KEY</button>
-        <p class="control-hint">Stored only in this browser (never uploaded). Get a free key at aistudio.google.com/apikey. Charlie uses it to answer anything outside his built-in commands.</p>
-      </div>
-      <button class="reset-btn" id="resetMemoryBtn">FORGET ME</button>
     </div>
-  </div>
 
-  <!-- Name capture modal: shown once on first run -->
-  <div class="modal-overlay" id="nameModal">
-    <div class="modal-box">
-      <h2>Hello, I'm Charlie.</h2>
-      <p>What should I call you?</p>
-      <input type="text" id="nameInput" placeholder="Type your name..." maxlength="24" />
-      <button id="nameSubmit">CONFIRM</button>
+    <!-- Name capture modal: shown once on first run -->
+    <div class="modal-overlay" id="nameModal">
+      <div class="modal-box">
+        <h2>Hello, I'm Charlie.</h2>
+        <p>What should I call you?</p>
+        <input type="text" id="nameInput" placeholder="Type your name..." maxlength="24" />
+        <button id="nameSubmit">CONFIRM</button>
+      </div>
     </div>
-  </div>
 
-  <div class="version-badge">v2.3.0</div>
+    <div class="version-badge">v3.0.0</div>
 
-  <script src="data/foods.js"></script>
-  <script src="script.js"></script>
-</body>
+    <script type="module" src="/src/main.js"></script>
+  </body>
 </html>

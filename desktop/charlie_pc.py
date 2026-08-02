@@ -6,8 +6,10 @@ Cross-platform (Windows / macOS / Linux). Always listens for the wake
 word "Charlie", then either runs a built-in command or asks Gemini.
 Can open apps, run shell commands, and generate/save files on this
 machine — see README.md in this folder for the full command list and
-the safety notes (this build runs whatever you tell it to, with no
-whitelist — that was a deliberate choice, not an oversight).
+the safety notes. There is still no command whitelist — that remains a
+deliberate choice — but commands that look destructive (recursive
+deletes, disk formatting, force-pushes, etc.) require a spoken
+"confirm" before they run; see _is_destructive_command() below.
 
 File map:
   1. Config (API key)
@@ -16,13 +18,15 @@ File map:
   4. System actions (open app / run command / files)
   5. Command dispatch
   6. Speech recognition (listening loop)
-  7. Auto-update (checks GitHub on every startup)
+  7. Auto-update (checks GitHub Releases on every startup, verified by
+     checksum — see "Auto-update security" below)
   8. Entry point
 """
 
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import platform
@@ -324,6 +328,51 @@ def open_app(name: str) -> str:
         return f"I couldn't open {name}: {e}. Add it to apps.json with its exact path if this keeps happening."
 
 
+# ---------------------------------------------------------------------------
+# Destructive-command confirmation gate
+#
+# There is still no whitelist — "run <anything>" reaches the shell exactly as
+# before — but a command matching one of these patterns is staged instead of
+# run immediately, and needs a spoken "confirm" within the time window below.
+# This catches the common, high-blast-radius mistakes (a misheard "delete",
+# an autocomplete gone wrong) without pretending to be a real sandbox: anyone
+# who wants to run something destructive can still say "confirm". See
+# handle_command()'s confirmation check, just below command dispatch.
+# ---------------------------------------------------------------------------
+_DESTRUCTIVE_PATTERNS = [
+    re.compile(p, re.IGNORECASE)
+    for p in [
+        r"\brm\s+(-[a-z]*r[a-z]*f|-[a-z]*f[a-z]*r)\b",  # rm -rf / rm -fr (any flag order)
+        r"\brm\s+-r\b",
+        r"\bdel\s+/[fs]\b",  # Windows: del /f, del /s
+        r"\brmdir\s+/s\b",  # Windows: rmdir /s
+        r"\bformat\s+[a-z]:",  # Windows: format c:
+        r"\bmkfs(\.\w+)?\b",  # Linux: mkfs / mkfs.ext4 etc.
+        r"\bdd\s+if=",  # raw disk write
+        r">\s*/dev/(sd|nvme|disk)",  # redirecting straight onto a block device
+        r"\bdiskpart\b",  # Windows disk partitioning tool
+        r"\bchmod\s+-r\s+777\b",
+        r":\(\)\s*\{\s*:\s*\|\s*:\s*&?\s*\}\s*;\s*:",  # classic fork bomb
+        r"\bgit\s+push\s+.*--force\b",
+        r"\bgit\s+reset\s+--hard\b",
+        r"\bdrop\s+(database|table)\b",
+        r"\btruncate\s+table\b",
+        r"\bshutdown\b|\breboot\b|\bpoweroff\b|\bhalt\b",
+    ]
+]
+_CONFIRMATION_WORDS_RE = re.compile(r"^(confirm|yes|do it|go ahead|run it)\b", re.IGNORECASE)
+_CONFIRMATION_WINDOW_SECONDS = 20
+
+# {"command": str, "expires_at": float} while a destructive command awaits
+# confirmation; None otherwise. Only ever touched from handle_command(),
+# which _process_command() already runs one call at a time per generation.
+_pending_confirmation: dict | None = None
+
+
+def _is_destructive_command(command: str) -> bool:
+    return any(pattern.search(command) for pattern in _DESTRUCTIVE_PATTERNS)
+
+
 def run_shell_command(command: str) -> str:
     command = command.strip()
     if not command:
@@ -340,6 +389,23 @@ def run_shell_command(command: str) -> str:
         return "That command was still running after 30 seconds, so I gave up on it."
     except Exception as e:
         return f"I couldn't run that: {e}"
+
+
+def request_shell_command(command: str) -> str:
+    """Entry point for the "run/execute <command>" dispatch below — stages a
+    confirmation instead of running immediately if the command looks
+    destructive, otherwise runs it straight away exactly as before."""
+    global _pending_confirmation
+    command = command.strip()
+    if not command:
+        return "Run what, exactly?"
+    if _is_destructive_command(command):
+        _pending_confirmation = {"command": command, "expires_at": time.time() + _CONFIRMATION_WINDOW_SECONDS}
+        return (
+            f"That looks like a destructive command: {command}. "
+            f"Say 'confirm' within {_CONFIRMATION_WINDOW_SECONDS} seconds to run it, or say anything else to cancel."
+        )
+    return run_shell_command(command)
 
 
 _EXTENSION_HINTS = [
@@ -411,6 +477,7 @@ def _extract(pattern: str, command: str):
 
 
 def handle_command(command: str) -> str:
+    global _pending_confirmation
     command = command.strip()
     if not command:
         return f"Yes? I'm listening."
@@ -421,6 +488,18 @@ def handle_command(command: str) -> str:
         speak("Goodbye.")
         time.sleep(0.3)
         os._exit(0)
+
+    # A destructive-looking "run"/"execute" from the previous turn is
+    # waiting on this exact turn to be "confirm" — anything else cancels it,
+    # rather than being interpreted as a new command in the same breath.
+    if _pending_confirmation is not None:
+        pending = _pending_confirmation
+        _pending_confirmation = None
+        if time.time() > pending["expires_at"]:
+            return "That confirmation window expired, so I didn't run it. Say the command again if you still want to."
+        if _CONFIRMATION_WORDS_RE.match(lower):
+            return run_shell_command(pending["command"])
+        return "Cancelled — that command was not run."
 
     if re.match(r"^(forget our conversation|clear the chat|start a new conversation|new conversation)\b", lower):
         reset_conversation()
@@ -456,7 +535,7 @@ def handle_command(command: str) -> str:
 
     m = re.match(r"^(?:run|execute)\s+(?P<cmd>.+)$", command, re.IGNORECASE)
     if m:
-        return run_shell_command(m.group("cmd"))
+        return request_shell_command(m.group("cmd"))
 
     m = re.match(r"^search (?:google|the web) for\s+(?P<q>.+)$", command, re.IGNORECASE)
     if m:
@@ -622,10 +701,26 @@ def listen_loop() -> None:
 # ever touches Charlie's own code (this script, or the packaged
 # executable) — your API key, apps.json, and everything in ~/CharlieFiles
 # are never read or written here, so an update never resets your setup.
+#
+# Auto-update security: earlier versions fetched charlie_pc.py straight from
+# the `main` branch on every launch, trusting whatever was currently pushed
+# there with only a syntax check. That meant anyone who could push to (or
+# compromise) `main` got code execution on every installed copy of Charlie,
+# instantly, with no review window. Updates now come from tagged GitHub
+# Releases only (the same mechanism the packaged .exe already used) and are
+# verified against a SHA256SUMS.txt published in that same release before
+# being applied — see build-desktop.yml, which generates it during the
+# release build. This meaningfully narrows the trust boundary from "anyone
+# who can push to main" to "the release process itself", and catches
+# transport corruption — but it's a checksum, not a signature: it doesn't
+# protect against someone who can tamper with the release assets and
+# SHA256SUMS.txt together (e.g. a compromised repo or CI). GPG-signing
+# releases with a key kept outside the repo/CI entirely would close that
+# gap, if you want to take this further.
 # ---------------------------------------------------------------------------
 GITHUB_REPO = "AdasV-tech/Charlie-Assistant"
-RAW_BASE = f"https://raw.githubusercontent.com/{GITHUB_REPO}/main/desktop"
 RELEASES_API = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
+CHECKSUMS_ASSET_NAME = "SHA256SUMS.txt"
 
 _PLATFORM_ASSET = {
     "Windows": "charlie-windows.zip",
@@ -647,9 +742,46 @@ def _http_get(url: str, timeout: int = 6) -> bytes | None:
         return None
 
 
+def _fetch_latest_release() -> dict | None:
+    raw = _http_get(RELEASES_API)
+    if not raw:
+        return None
+    try:
+        return json.loads(raw)
+    except json.JSONDecodeError:
+        return None
+
+
+def _release_asset_url(release: dict, asset_name: str) -> str | None:
+    return next(
+        (a["browser_download_url"] for a in release.get("assets", []) if a.get("name") == asset_name),
+        None,
+    )
+
+
+def _expected_sha256(release: dict, asset_name: str) -> str | None:
+    """Reads SHA256SUMS.txt from the same release and returns the expected
+    hash for asset_name, or None if the checksums file (or an entry for this
+    asset) isn't there — callers treat that as "can't verify, don't apply"."""
+    checksums_url = _release_asset_url(release, CHECKSUMS_ASSET_NAME)
+    if not checksums_url:
+        return None
+    raw = _http_get(checksums_url, timeout=15)
+    if not raw:
+        return None
+    for line in raw.decode("utf-8", errors="ignore").splitlines():
+        parts = line.split()
+        if len(parts) == 2 and parts[1].lstrip("*") == asset_name:
+            return parts[0].lower()
+    return None
+
+
 def _fetch_remote_version() -> str | None:
-    raw = _http_get(f"{RAW_BASE}/VERSION")
-    return raw.decode("utf-8").strip() if raw else None
+    release = _fetch_latest_release()
+    if not release:
+        return None
+    tag = (release.get("tag_name") or "").strip()
+    return tag[1:] if tag[:1] in ("v", "V") else (tag or None)
 
 
 def _relaunch_script() -> None:
@@ -660,9 +792,29 @@ def _relaunch_script() -> None:
 
 
 def _apply_script_update() -> bool:
-    new_source = _http_get(f"{RAW_BASE}/charlie_pc.py")
+    release = _fetch_latest_release()
+    if not release:
+        return False
+
+    asset_url = _release_asset_url(release, "charlie_pc.py")
+    if not asset_url:
+        print("Latest release has no charlie_pc.py asset — skipping update.")
+        return False
+
+    expected_hash = _expected_sha256(release, "charlie_pc.py")
+    if not expected_hash:
+        print(f"Latest release is missing {CHECKSUMS_ASSET_NAME} (or an entry for charlie_pc.py) — refusing to update without a checksum to verify against.")
+        return False
+
+    new_source = _http_get(asset_url, timeout=30)
     if not new_source:
         return False
+
+    actual_hash = hashlib.sha256(new_source).hexdigest()
+    if actual_hash != expected_hash:
+        print(f"Downloaded update failed checksum verification (expected {expected_hash}, got {actual_hash}) — not applying it.")
+        return False
+
     try:
         compile(new_source, "charlie_pc.py", "exec")
     except SyntaxError as e:
@@ -685,24 +837,27 @@ def _apply_frozen_update() -> None:
     import tempfile
     import zipfile
 
-    release_raw = _http_get(RELEASES_API)
-    if not release_raw:
-        return
-    try:
-        release = json.loads(release_raw)
-    except json.JSONDecodeError:
+    release = _fetch_latest_release()
+    if not release:
         return
 
     asset_name = _PLATFORM_ASSET.get(_os_name)
-    asset_url = next(
-        (a["browser_download_url"] for a in release.get("assets", []) if a.get("name") == asset_name),
-        None,
-    ) if asset_name else None
+    asset_url = _release_asset_url(release, asset_name) if asset_name else None
     if not asset_url:
+        return
+
+    expected_hash = _expected_sha256(release, asset_name)
+    if not expected_hash:
+        print(f"Latest release is missing a {CHECKSUMS_ASSET_NAME} entry for {asset_name} — refusing to update without a checksum to verify against.")
         return
 
     zip_bytes = _http_get(asset_url, timeout=30)
     if not zip_bytes:
+        return
+
+    actual_hash = hashlib.sha256(zip_bytes).hexdigest()
+    if actual_hash != expected_hash:
+        print(f"Downloaded update failed checksum verification (expected {expected_hash}, got {actual_hash}) — not applying it.")
         return
 
     current_exe = Path(sys.executable).resolve()

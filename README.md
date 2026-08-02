@@ -12,7 +12,7 @@ There's also a [desktop version](desktop/) — a Python app that runs on your
 own machine and can open apps, run shell commands, and generate/save files,
 not just talk.
 
-![status](https://img.shields.io/badge/status-v2.0.0-3ee6ff)
+![status](https://img.shields.io/badge/status-v3.0.0-3ee6ff)
 
 ---
 
@@ -71,32 +71,59 @@ glowing animated core, the transcript log, and local memory.
 ```
 Charlie-Assistant/
 │
-├── index.html        # Page structure / layout (tabs, scanner, dashboard, profile)
-├── style.css          # HUD styling, animations, and V2 panels
-├── script.js           # Speech, brain, memory, scanner, dashboard, profile logic
-├── README.md
-├── data/
-│   └── foods.js       # Local food database used by the Food Scanner
-└── assets/            # Reserved for icons/sounds you add later
+├── index.html              # Vite entry HTML
+├── public/                 # Static passthrough — CNAME, favicon
+├── src/
+│   ├── main.js              # Boot sequence: registers command packs, inits every page module
+│   ├── core/
+│   │   └── assistant.js      # Voice state machine, speech synthesis/recognition, barge-in
+│   ├── commands/
+│   │   ├── registry.js        # Pattern matching + dispatch (falls back to math, then Gemini)
+│   │   ├── math.js, text.js, gemini.js
+│   │   └── packs/              # Commands grouped by theme (identity, smalltalk, games, ...)
+│   ├── store/                # One localStorage-backed store factory, reused everywhere
+│   ├── ui/
+│   │   ├── pages/              # Food Scanner, Profile, Dashboard
+│   │   └── tabs.js, settingsDrawer.js, nameModal.js, transcript.js, alertBanner.js
+│   ├── data/foods.js         # Local food database used by the Food Scanner
+│   └── styles/main.css       # HUD styling and animations
+├── tests/                  # Vitest unit tests for the pure logic (math, matching, parsing)
+└── desktop/                 # Python desktop companion — see desktop/README.md
 ```
 
-No frameworks, no build step, no `node_modules`. Just plain HTML/CSS/JS.
+Built with [Vite](https://vitejs.dev) — a small, standard build step that compiles the
+`src/` modules above into a static `dist/` bundle. The *output* is still plain
+HTML/CSS/JS with no backend or server required; Vite is only needed to edit
+and build the source.
 
 ---
 
 ## Installation
 
-1. **Download the ZIP** from this repository (or `git clone` it) and unzip it
-   anywhere on your computer.
-2. **Open `index.html`** in a modern browser — Google Chrome or Microsoft
-   Edge on desktop give the most reliable speech recognition support.
-   Double-click the file, or right-click → *Open with* → your browser.
+**Running it locally:**
+
+1. **Clone this repository** and install [Node.js](https://nodejs.org) 18+ if you don't have it.
+2. **Install dependencies and start the dev server:**
+   ```
+   npm install
+   npm run dev
+   ```
+   Open the printed `localhost` URL in a modern browser — Chrome or Edge give
+   the most reliable speech recognition support.
 3. **Allow microphone access** when the browser prompts you. If you
    accidentally block it, click the padlock/site-info icon in the address
    bar and re-enable the microphone permission for the page.
 4. **Say hello!** On your first run, Charlie will ask for your name. After
    that, tap the glowing core, wait for the "LISTENING" status, and speak
    a command such as *"What time is it?"*
+
+**Building for production:** `npm run build` writes a static site to `dist/`
+— deploy that folder anywhere that serves static files (this repo's own copy
+deploys to GitHub Pages via `.github/workflows/deploy-pages.yml`). Preview a
+production build locally with `npm run preview`.
+
+**Other useful scripts:** `npm run lint` / `npm run format` (ESLint +
+Stylelint + Prettier) and `npm test` (Vitest) — see `package.json`.
 
 ### Using it from your phone
 
@@ -105,13 +132,10 @@ microphone and camera access, so opening the file directly as `file://` on a
 phone may not allow the mic or the food scanner's camera button. Two easy
 ways around this while running Charlie from your PC:
 
-- **Local web server:** from the project folder, run a tiny local server,
-  e.g. with Python already installed:
-  ```
-  python -m http.server 8000
-  ```
-  Then, on your phone (connected to the same Wi-Fi), visit
-  `http://<your-pc-local-ip>:8000` in the browser.
+- **Vite's own network mode:** run `npm run dev -- --host` and it prints a
+  `Network:` URL alongside the usual `localhost` one — open that on your
+  phone (connected to the same Wi-Fi). Works just as well against a built
+  copy: `npm run preview -- --host` serves the `dist/` output the same way.
 - **Free tunnel tool** (e.g. ngrok, Cloudflare Tunnel) to get a temporary
   HTTPS URL pointing at your local server, then open that URL on your phone.
 
@@ -120,11 +144,11 @@ ways around this while running Charlie from your PC:
 ## How it works
 
 - **Assistant tab** — tap the core to wake Charlie, speak a command, and it's
-  matched against the `commands` array in `script.js` using simple keyword
-  matching (no external NLP service).
+  matched against every registered command pack (see `src/commands/packs/`)
+  using simple keyword matching (no external NLP service).
 - **Scanner tab** — pick or take a photo (kept purely as a visual reference on
   your device), then type or tap a food name. Charlie looks it up in
-  `data/foods.js` and displays a score, nutrition estimate, benefits,
+  `src/data/foods.js` and displays a score, nutrition estimate, benefits,
   negatives, and a recommendation.
 - **Dashboard tab** — shows a greeting based on the time of day, your list of
   daily suggestions (the first one doubles as "Today's focus"), and buttons
@@ -139,11 +163,11 @@ ways around this while running Charlie from your PC:
 
 ## Built-in voice commands
 
-Charlie ships with **100+ commands** (over 200 trigger phrases total) in the
-`commands` array in `script.js`. Say any of these — or a close variation,
-since Charlie matches on keywords, not exact phrasing. When two commands
-could both match (e.g. "stop" vs. "stop timer"), the longer, more specific
-phrase wins.
+Charlie ships with **100+ commands** (over 200 trigger phrases total) spread
+across the themed packs in `src/commands/packs/`. Say any of these — or a
+close variation, since Charlie matches on keywords, not exact phrasing. When
+two commands could both match (e.g. "stop" vs. "stop timer"), the longer,
+more specific phrase wins.
 
 | Category | Say something like... | Charlie does... |
 |----------|------------------------|-------------------|
@@ -169,8 +193,8 @@ yet" reply — see **Adding your own commands** below.
 
 ## Adding your own commands
 
-Open `script.js` and find the `commands` array (or the `commands.push(...)`
-block near the bottom for V2 additions). Each entry looks like this:
+Pick whichever pack in `src/commands/packs/` fits best (or add a new file),
+and add an entry to its exported array. Each entry looks like this:
 
 ```js
 {
@@ -183,19 +207,23 @@ block near the bottom for V2 additions). Each entry looks like this:
 - `respond` returns the text Charlie will speak. It receives the raw
   transcript as an argument if you need to parse extra details out of it. It
   can also return a Promise if you need to await something (see the battery
-  status command for an example).
+  status command in `src/commands/packs/system.js` for an example).
 - If your phrase overlaps with an existing one (e.g. your new "stop music"
-  vs. the built-in "stop"), don't worry about array order — `findBestCommand`
-  always picks whichever matching pattern is the longest/most specific.
+  vs. the built-in "stop"), don't worry about which pack it's in or array
+  order — `findBestCommand` (in `src/commands/registry.js`) always picks
+  whichever matching pattern is the longest/most specific.
+- A new pack needs one extra step: import it and add it to the array in
+  `src/main.js` that gets passed to `registerPack`.
 
-Add a new object and Charlie will pick it up immediately — no build step
-needed, just refresh the page.
+Refresh the dev server (`npm run dev` hot-reloads automatically) and Charlie
+picks up the new command immediately.
 
 ### Adding your own foods
 
-Open `data/foods.js` and add a new object to the `FOOD_DATABASE` array,
-following the same shape as the existing entries (`name`, `aliases`, `score`,
-`calories`, `protein`, `good`, `bad`, `recommendation`).
+Open `src/data/foods.js` and add a new object to the `FOOD_DATABASE` array,
+following the same shape as the existing entries (`name`, `aliases`,
+`calories`, `protein`, `carbs`, `fat`, `sugar`, `fibre`, the five `*Score`
+fields, `benefits`, `negatives`, `dailyRecommendation`).
 
 ---
 
