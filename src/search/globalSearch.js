@@ -4,7 +4,17 @@
 // rather than a fuzzy-search dependency for a dataset this small.
 import { switchTab } from '../ui/tabs.js';
 import { openSettingsDrawer } from '../ui/settingsDrawer.js';
-import { notesStore, foodHistoryStore, profileStore, projectsStore } from '../store/stores.js';
+import {
+  notesStore,
+  foodHistoryStore,
+  profileStore,
+  projectsStore,
+  subjectsStore,
+  assignmentsStore,
+  flashcardsStore,
+  workoutsStore,
+  habitsStore,
+} from '../store/stores.js';
 
 const searchBtn = document.getElementById('searchBtn');
 const searchOverlay = document.getElementById('searchOverlay');
@@ -36,6 +46,24 @@ function staticIndex() {
       subtitle: 'Progress, status, priority, deadlines',
       keywords: 'projects project manager tasks deadlines status priority',
       action: () => switchTab('projects'),
+    },
+    {
+      title: 'Study Center',
+      subtitle: 'Subjects, assignments, flashcards, Pomodoro',
+      keywords: 'study center subjects assignments flashcards pomodoro goals achievements',
+      action: () => switchTab('study'),
+    },
+    {
+      title: 'Fitness Center',
+      subtitle: 'Workouts, habits, water, weight, sleep',
+      keywords: 'fitness center workouts habits water weight sleep goals achievements',
+      action: () => switchTab('fitness'),
+    },
+    {
+      title: 'Smart Memory',
+      subtitle: 'Everything Charlie remembers, export or clear by category',
+      keywords: 'memory smart memory export clear data',
+      action: () => switchTab('memory'),
     },
     {
       title: 'Profile',
@@ -81,6 +109,53 @@ function dynamicIndex() {
       subtitle: `Project · ${project.status.replace('-', ' ')} · ${project.progress}%`,
       keywords: `${project.name} ${project.description} ${project.category} ${project.tags.join(' ')}`,
       action: () => switchTab('projects'),
+    });
+  });
+
+  const subjects = subjectsStore.get();
+  subjects.forEach((subject) => {
+    items.push({
+      title: subject.name,
+      subtitle: 'Study subject',
+      keywords: subject.name,
+      action: () => switchTab('study'),
+    });
+  });
+
+  assignmentsStore.get().forEach((assignment) => {
+    const subject = subjects.find((s) => s.id === assignment.subjectId);
+    items.push({
+      title: assignment.title,
+      subtitle: `Assignment · ${assignment.status}${subject ? ` · ${subject.name}` : ''}`,
+      keywords: `${assignment.title} ${subject ? subject.name : ''}`,
+      action: () => switchTab('study'),
+    });
+  });
+
+  flashcardsStore.get().forEach((card) => {
+    items.push({
+      title: card.front.length > 60 ? `${card.front.slice(0, 60)}…` : card.front,
+      subtitle: 'Flashcard',
+      keywords: `${card.front} ${card.back}`,
+      action: () => switchTab('study'),
+    });
+  });
+
+  workoutsStore.get().forEach((workout) => {
+    items.push({
+      title: workout.name,
+      subtitle: `Workout · ${workout.type} · ${workout.date}`,
+      keywords: `${workout.name} ${workout.type}`,
+      action: () => switchTab('fitness'),
+    });
+  });
+
+  habitsStore.get().forEach((habit) => {
+    items.push({
+      title: habit.name,
+      subtitle: 'Habit',
+      keywords: habit.name,
+      action: () => switchTab('fitness'),
     });
   });
 

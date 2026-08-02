@@ -9,6 +9,7 @@
 // displayed as text.
 import { geminiKeyStore } from '../store/stores.js';
 import { openSettingsDrawer, focusGeminiKeyInput } from '../ui/settingsDrawer.js';
+import { buildUserContextSummary } from '../core/userContext.js';
 
 const GEMINI_MODEL = 'gemini-flash-latest';
 const GEMINI_API_BASE = 'https://generativelanguage.googleapis.com/v1beta/models';
@@ -20,6 +21,16 @@ const GEMINI_SYSTEM_INSTRUCTION = [
   'Never use markdown, asterisks, headers, bullet symbols, or code fences, since those get read aloud literally.',
   "Answer directly and confidently. Skip preamble, throat-clearing, and caveats. Don't say you don't know unless you truly have no reasonable answer.",
 ].join(' ');
+
+// Builds the system instruction fresh on every call so it reflects whatever
+// is currently in Charlie's stores — real personalization, not a static
+// persona. The context summary is explicitly framed as background, not
+// something to recite back to the user verbatim.
+function buildSystemInstruction() {
+  const contextSummary = buildUserContextSummary();
+  if (!contextSummary) return GEMINI_SYSTEM_INSTRUCTION;
+  return `${GEMINI_SYSTEM_INSTRUCTION} Background context about the user from Charlie's other features — use it only when directly relevant, and never recite it verbatim: ${contextSummary}`;
+}
 
 let geminiHistory = [];
 
@@ -68,7 +79,7 @@ export async function askGemini(question) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         contents,
-        systemInstruction: { parts: [{ text: GEMINI_SYSTEM_INSTRUCTION }] },
+        systemInstruction: { parts: [{ text: buildSystemInstruction() }] },
         // maxOutputTokens has to cover Gemini's hidden "thinking" tokens as
         // well as the visible reply — anything much lower than this and the
         // model sometimes burns the whole budget thinking and gets cut off

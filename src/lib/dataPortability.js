@@ -15,6 +15,17 @@ import {
   themeStore,
   conversationStore,
   focusSessionsStore,
+  subjectsStore,
+  assignmentsStore,
+  flashcardsStore,
+  studyGoalsStore,
+  workoutsStore,
+  habitsStore,
+  waterLogStore,
+  waterGoalStore,
+  weightLogStore,
+  sleepLogStore,
+  fitnessGoalsStore,
 } from '../store/stores.js';
 
 const EXPORTABLE_STORES = {
@@ -28,6 +39,17 @@ const EXPORTABLE_STORES = {
   theme: themeStore,
   conversation: conversationStore,
   focusSessions: focusSessionsStore,
+  subjects: subjectsStore,
+  assignments: assignmentsStore,
+  flashcards: flashcardsStore,
+  studyGoals: studyGoalsStore,
+  workouts: workoutsStore,
+  habits: habitsStore,
+  waterLog: waterLogStore,
+  waterGoal: waterGoalStore,
+  weightLog: weightLogStore,
+  sleepLog: sleepLogStore,
+  fitnessGoals: fitnessGoalsStore,
 };
 
 const EXPORT_FORMAT_VERSION = 1;
@@ -59,15 +81,20 @@ export function importAllData(payload) {
   }
 }
 
-export function downloadExport() {
-  const payload = exportAllData();
+// Shared by the full backup export and the Memory page's per-category
+// export — same download mechanics, different payload/filename.
+export function downloadJSON(filename, payload) {
   const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');
   link.href = url;
-  link.download = `charlie-backup-${new Date().toISOString().slice(0, 10)}.json`;
+  link.download = filename;
   link.click();
   URL.revokeObjectURL(url);
+}
+
+export function downloadExport() {
+  downloadJSON(`charlie-backup-${new Date().toISOString().slice(0, 10)}.json`, exportAllData());
 }
 
 export async function importFromFile(file) {

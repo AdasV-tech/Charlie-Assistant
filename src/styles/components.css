@@ -62,10 +62,14 @@
   transform: translateY(-8px) scale(0.98);
 }
 
-.toast--error { border-color: rgb(var(--red-rgb) / 45%); }
+.toast--error {
+  border-color: rgb(var(--red-rgb) / 45%);
+}
 
 @media (prefers-reduced-motion: reduce) {
-  .toast { transition: opacity var(--motion-fast) linear; }
+  .toast {
+    transition: opacity var(--motion-fast) linear;
+  }
 }
 
 /* ---------- Core particles — small bursts around the Core per state ---------- */
@@ -113,7 +117,9 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .core-particle { display: none; }
+  .core-particle {
+    display: none;
+  }
 }
 
 /* ---------- Popover — shared shell for the notification panel and search ---------- */
@@ -127,7 +133,10 @@
   padding: 70px 16px 16px;
   background: rgb(var(--bg-rgb) / 55%);
 }
-.popover-overlay.hidden { display: none; }
+
+.popover-overlay.hidden {
+  display: none;
+}
 
 .popover-panel {
   width: 100%;
@@ -196,7 +205,10 @@
   font-size: 13px;
   line-height: 1;
 }
-.notification-list li button:hover { color: var(--red); }
+
+.notification-list li button:hover {
+  color: var(--red);
+}
 
 .notification-empty,
 .search-empty {
@@ -308,4 +320,45 @@
   font-size: 20px;
   font-weight: 700;
   color: var(--text);
+}
+
+/* ---------- Calendar heatmap — shared by Study Center and Fitness ---------- */
+.heatmap-grid {
+  display: flex;
+  gap: 3px;
+  overflow-x: auto;
+  padding-bottom: 4px;
+}
+
+.heatmap-column {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.heatmap-cell {
+  width: 11px;
+  height: 11px;
+  border-radius: 2px;
+  background: var(--line);
+}
+
+.heatmap-cell--empty {
+  background: transparent;
+}
+
+.heatmap-level-1 {
+  background: rgb(var(--cyan-rgb) / 25%);
+}
+
+.heatmap-level-2 {
+  background: rgb(var(--cyan-rgb) / 50%);
+}
+
+.heatmap-level-3 {
+  background: rgb(var(--cyan-rgb) / 75%);
+}
+
+.heatmap-level-4 {
+  background: var(--cyan);
 }

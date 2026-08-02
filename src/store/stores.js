@@ -65,8 +65,58 @@ export const conversationStore = createStore('charlie_conversation_v1', [], {
 });
 
 // One entry per completed Study/Workout Mode session — the real signal
-// behind the Dashboard's productivity score (see ui/pages/dashboard.js).
+// behind the Dashboard's productivity score (see ui/pages/dashboard.js) and
+// the Study Center's goals/heatmap/achievements (see ui/pages/studyCenter.js).
+// Shape: { mode: 'study'|'workout', completedAt, durationMinutes, subjectId? }
 export const focusSessionsStore = createStore('charlie_focus_sessions_v1', [], {
+  deserialize: arrayDeserialize([]),
+});
+
+// See ui/pages/studyCenter.js for the shape of each entry.
+export const subjectsStore = createStore('charlie_subjects_v1', [], {
+  deserialize: arrayDeserialize([]),
+});
+
+export const assignmentsStore = createStore('charlie_assignments_v1', [], {
+  deserialize: arrayDeserialize([]),
+});
+
+export const flashcardsStore = createStore('charlie_flashcards_v1', [], {
+  deserialize: arrayDeserialize([]),
+});
+
+export const studyGoalsStore = createStore('charlie_study_goals_v1', [], {
+  deserialize: arrayDeserialize([]),
+});
+
+// See ui/pages/fitnessCenter.js for the shape of each entry.
+export const workoutsStore = createStore('charlie_workouts_v1', [], {
+  deserialize: arrayDeserialize([]),
+});
+
+export const habitsStore = createStore('charlie_habits_v1', [], {
+  deserialize: arrayDeserialize([]),
+});
+
+export const waterLogStore = createStore('charlie_water_log_v1', [], {
+  deserialize: arrayDeserialize([]),
+});
+
+// A single number of glasses — deliberately separate from the generic
+// period-based goals below, since a hydration target is always "today".
+export const waterGoalStore = createStore('charlie_water_goal_v1', 8);
+
+export const weightLogStore = createStore('charlie_weight_log_v1', [], {
+  deserialize: arrayDeserialize([]),
+});
+
+// Manual entries only — an honest placeholder for real sleep tracking
+// hardware/APIs Charlie doesn't have access to, not a fabricated sync.
+export const sleepLogStore = createStore('charlie_sleep_log_v1', [], {
+  deserialize: arrayDeserialize([]),
+});
+
+export const fitnessGoalsStore = createStore('charlie_fitness_goals_v1', [], {
   deserialize: arrayDeserialize([]),
 });
 

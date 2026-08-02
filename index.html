@@ -4,6 +4,31 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Charlie Assistant</title>
+    <!--
+      Defense-in-depth against script injection (the app's own escapeHtml()
+      discipline is the primary defence — see src/lib/utils.js and every
+      innerHTML call site). script-src is a hash allowlist rather than
+      'unsafe-inline' or 'self' alone, so only this exact inline snippet can
+      run — no injected <script> tag, however it got in, would execute.
+
+      style-src keeps 'unsafe-inline': progress bars, subject-color dots,
+      and trend charts across Projects/Study/Fitness set inline `style`
+      attributes from real numeric/color data, and none of that is a script
+      vector — CSS injection can't execute JS on its own.
+
+      frame-ancestors is deliberately NOT set here — browsers ignore that
+      directive when delivered via <meta> (it only works as a real HTTP
+      response header), and GitHub Pages (this app's host) doesn't support
+      custom headers. Clickjacking protection for this app would need an
+      X-Frame-Options/CSP header from whatever host serves it, not this tag.
+
+      If the inline script below changes, recompute its hash with:
+        node -e "const c=require('fs').readFileSync('index.html','utf8').match(/<script>([\s\S]*?)<\/script>/)[1]; console.log('sha256-'+require('crypto').createHash('sha256').update(c).digest('base64'))"
+    -->
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self' 'sha256-OclpBeMoKYrDAePYL/fcJknj6ZFZrESExbsfd5e7EhY='; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self' https://generativelanguage.googleapis.com https://api.open-meteo.com; base-uri 'self'; form-action 'self';"
+    />
     <script>
       // Applies the saved theme before first paint so reloading never
       // flashes the default theme first. Reads the same localStorage key
@@ -35,11 +60,13 @@
     />
   </head>
   <body>
+    <a class="skip-link" href="#appMain">Skip to main content</a>
+
     <!-- Background grid / scanline layer, purely decorative -->
     <div class="bg-grid"></div>
     <div class="bg-vignette"></div>
 
-    <main class="app">
+    <main class="app" id="appMain" tabindex="-1">
       <!-- Top bar: assistant name + connection/status readout + settings -->
       <header class="topbar">
         <div class="brand">
@@ -122,6 +149,9 @@
         <button class="tab-btn" data-tab="scanner">SCANNER</button>
         <button class="tab-btn" data-tab="dashboard">DASHBOARD</button>
         <button class="tab-btn" data-tab="projects">PROJECTS</button>
+        <button class="tab-btn" data-tab="study">STUDY</button>
+        <button class="tab-btn" data-tab="fitness">FITNESS</button>
+        <button class="tab-btn" data-tab="memory">MEMORY</button>
         <button class="tab-btn" data-tab="profile">PROFILE</button>
       </nav>
 
@@ -315,7 +345,9 @@
       <section class="tab-panel" id="tab-projects" data-tab-panel="projects">
         <div class="panel-card">
           <h2 class="panel-title">PROJECT MANAGER</h2>
-          <p class="panel-sub">Track progress, priority, and deadlines across everything you're working on.</p>
+          <p class="panel-sub">
+            Track progress, priority, and deadlines across everything you're working on.
+          </p>
 
           <div class="project-stats" id="projectStats"></div>
 
@@ -352,7 +384,12 @@
             <div class="project-form-row">
               <div>
                 <label for="projectCategoryInput">CATEGORY</label>
-                <input type="text" id="projectCategoryInput" placeholder="e.g. Work" maxlength="30" />
+                <input
+                  type="text"
+                  id="projectCategoryInput"
+                  placeholder="e.g. Work"
+                  maxlength="30"
+                />
               </div>
               <div>
                 <label for="projectDeadlineInput">DEADLINE</label>
@@ -405,6 +442,302 @@
           </div>
 
           <ul class="project-list" id="projectList"></ul>
+        </div>
+      </section>
+
+      <!-- ================= TAB: STUDY CENTER ================= -->
+      <section class="tab-panel" id="tab-study" data-tab-panel="study">
+        <div class="panel-card">
+          <h2 class="panel-title">STUDY CENTER</h2>
+          <p class="panel-sub">
+            Subjects, assignments, flashcards, and a Pomodoro timer — all backed by real progress
+            data, not decoration.
+          </p>
+
+          <div class="project-stats" id="studyStats"></div>
+
+          <h3 class="section-heading">POMODORO TIMER</h3>
+          <div class="study-pomodoro">
+            <div class="study-pomodoro-controls">
+              <select id="pomodoroSubjectSelect"></select>
+              <select id="pomodoroDurationSelect">
+                <option value="15">15 min</option>
+                <option value="25" selected>25 min</option>
+                <option value="45">45 min</option>
+                <option value="60">60 min</option>
+              </select>
+            </div>
+            <div class="study-pomodoro-readout hidden" id="pomodoroBox">
+              <span id="pomodoroReadout">25:00</span>
+              <span class="study-pomodoro-label" id="pomodoroLabel"></span>
+            </div>
+            <div class="study-pomodoro-actions">
+              <button class="primary-btn" id="pomodoroStartBtn" type="button">START SESSION</button>
+              <button class="secondary-btn hidden" id="pomodoroStopBtn" type="button">STOP</button>
+            </div>
+          </div>
+
+          <h3 class="section-heading">SUBJECTS</h3>
+          <div class="study-subject-add">
+            <input type="text" id="subjectNameInput" placeholder="e.g. Biology" maxlength="30" />
+            <input type="color" id="subjectColorInput" value="#3ee6ff" aria-label="Subject color" />
+            <button class="secondary-btn" id="addSubjectBtn" type="button">ADD</button>
+          </div>
+          <ul class="subject-chip-list" id="subjectChipList"></ul>
+
+          <h3 class="section-heading">ASSIGNMENTS</h3>
+          <form class="study-form" id="assignmentForm">
+            <label for="assignmentTitleInput">TITLE</label>
+            <input
+              type="text"
+              id="assignmentTitleInput"
+              placeholder="Assignment title"
+              maxlength="80"
+              required
+            />
+            <div class="project-form-row">
+              <div>
+                <label for="assignmentSubjectSelect">SUBJECT</label>
+                <select id="assignmentSubjectSelect"></select>
+              </div>
+              <div>
+                <label for="assignmentDueInput">DUE DATE</label>
+                <input type="date" id="assignmentDueInput" />
+              </div>
+            </div>
+            <label for="assignmentPriorityInput">PRIORITY</label>
+            <select id="assignmentPriorityInput">
+              <option value="low">Low</option>
+              <option value="medium" selected>Medium</option>
+              <option value="high">High</option>
+            </select>
+            <button class="primary-btn" id="addAssignmentBtn" type="submit">ADD ASSIGNMENT</button>
+          </form>
+          <div class="project-controls">
+            <select id="assignmentFilterSubject">
+              <option value="">All subjects</option>
+            </select>
+            <select id="assignmentFilterStatus">
+              <option value="">All statuses</option>
+              <option value="pending">Pending</option>
+              <option value="done">Done</option>
+            </select>
+          </div>
+          <ul class="assignment-list" id="assignmentList"></ul>
+
+          <h3 class="section-heading">FLASHCARDS</h3>
+          <form class="study-form" id="flashcardForm">
+            <label for="flashcardSubjectSelect">SUBJECT</label>
+            <select id="flashcardSubjectSelect"></select>
+            <label for="flashcardFrontInput">FRONT</label>
+            <textarea id="flashcardFrontInput" rows="2" required></textarea>
+            <label for="flashcardBackInput">BACK</label>
+            <textarea id="flashcardBackInput" rows="2" required></textarea>
+            <button class="primary-btn" id="addFlashcardBtn" type="submit">ADD CARD</button>
+          </form>
+
+          <div class="flashcard-review">
+            <button class="secondary-btn" id="startReviewBtn" type="button">
+              START REVIEW (<span id="dueCardCount">0</span> due)
+            </button>
+            <div class="flashcard-box hidden" id="flashcardBox">
+              <div class="flashcard-face" id="flashcardFace"></div>
+              <button class="secondary-btn" id="flipCardBtn" type="button">FLIP</button>
+              <div class="flashcard-grade-actions hidden" id="flashcardGradeActions">
+                <button class="secondary-btn" id="forgotCardBtn" type="button">FORGOT</button>
+                <button class="primary-btn" id="gotItCardBtn" type="button">GOT IT</button>
+              </div>
+            </div>
+          </div>
+          <ul class="flashcard-list" id="flashcardList"></ul>
+
+          <h3 class="section-heading">GOALS</h3>
+          <form class="study-form study-goal-form" id="goalForm">
+            <select id="goalPeriodSelect">
+              <option value="daily">Daily</option>
+              <option value="weekly" selected>Weekly</option>
+              <option value="monthly">Monthly</option>
+            </select>
+            <input
+              type="number"
+              id="goalTargetInput"
+              placeholder="Target minutes"
+              min="1"
+              required
+            />
+            <button class="primary-btn" id="addGoalBtn" type="submit">ADD GOAL</button>
+          </form>
+          <ul class="goal-list" id="goalList"></ul>
+
+          <h3 class="section-heading">ACHIEVEMENTS</h3>
+          <div class="achievement-grid" id="achievementGrid"></div>
+
+          <h3 class="section-heading">STUDY ACTIVITY</h3>
+          <div id="studyHeatmap"></div>
+        </div>
+      </section>
+
+      <!-- ================= TAB: FITNESS CENTER ================= -->
+      <section class="tab-panel" id="tab-fitness" data-tab-panel="fitness">
+        <div class="panel-card">
+          <h2 class="panel-title">FITNESS CENTER</h2>
+          <p class="panel-sub">
+            Workouts, habits, water, weight, and sleep — logged by hand and tracked honestly, with
+            no fabricated device sync.
+          </p>
+
+          <div class="project-stats" id="fitnessStats"></div>
+
+          <h3 class="section-heading">WORKOUT LOG</h3>
+          <form class="study-form" id="workoutForm">
+            <label for="workoutNameInput">NAME</label>
+            <input
+              type="text"
+              id="workoutNameInput"
+              placeholder="e.g. Morning run"
+              maxlength="60"
+              required
+            />
+            <div class="project-form-row">
+              <div>
+                <label for="workoutTypeInput">TYPE</label>
+                <select id="workoutTypeInput">
+                  <option value="cardio">Cardio</option>
+                  <option value="strength">Strength</option>
+                  <option value="flexibility">Flexibility</option>
+                  <option value="sports">Sports</option>
+                </select>
+              </div>
+              <div>
+                <label for="workoutDateInput">DATE</label>
+                <input type="date" id="workoutDateInput" />
+              </div>
+            </div>
+            <div class="project-form-row">
+              <div>
+                <label for="workoutDurationInput">DURATION (MIN)</label>
+                <input type="number" id="workoutDurationInput" min="1" placeholder="30" required />
+              </div>
+              <div>
+                <label for="workoutCaloriesInput">CALORIES (OPTIONAL)</label>
+                <input type="number" id="workoutCaloriesInput" min="0" placeholder="e.g. 250" />
+              </div>
+            </div>
+            <button class="primary-btn" id="addWorkoutBtn" type="submit">LOG WORKOUT</button>
+          </form>
+          <ul class="workout-list" id="workoutList"></ul>
+
+          <h3 class="section-heading">HABITS</h3>
+          <div class="habit-add">
+            <input type="text" id="habitNameInput" placeholder="e.g. Stretch" maxlength="40" />
+            <input
+              type="number"
+              id="habitTargetInput"
+              min="1"
+              max="7"
+              value="5"
+              aria-label="Target days per week"
+            />
+            <button class="secondary-btn" id="addHabitBtn" type="button">ADD</button>
+          </div>
+          <ul class="habit-list" id="habitList"></ul>
+
+          <h3 class="section-heading">WATER</h3>
+          <div class="water-tracker">
+            <div class="water-tracker-row">
+              <button
+                class="secondary-btn"
+                id="waterDecrementBtn"
+                type="button"
+                aria-label="Remove a glass"
+              >
+                −
+              </button>
+              <span class="water-count" id="waterTodayCount">0</span>
+              <button
+                class="secondary-btn"
+                id="waterIncrementBtn"
+                type="button"
+                aria-label="Add a glass"
+              >
+                +
+              </button>
+              <label for="waterGoalInput" class="water-goal-label">GOAL</label>
+              <input type="number" id="waterGoalInput" min="1" class="water-goal-input" />
+            </div>
+            <div class="hydration-bar">
+              <div class="hydration-bar-fill" id="waterBarFill"></div>
+            </div>
+          </div>
+
+          <h3 class="section-heading">WEIGHT</h3>
+          <form class="study-form study-goal-form" id="weightForm">
+            <input type="date" id="weightDateInput" required />
+            <input
+              type="number"
+              id="weightValueInput"
+              min="1"
+              step="0.1"
+              placeholder="Weight (kg)"
+              required
+            />
+            <button class="primary-btn" id="addWeightBtn" type="submit">LOG</button>
+          </form>
+          <div id="weightChart"></div>
+          <p class="fitness-summary" id="weightSummary"></p>
+
+          <h3 class="section-heading">SLEEP</h3>
+          <form class="study-form study-goal-form" id="sleepForm">
+            <input type="date" id="sleepDateInput" required />
+            <input
+              type="number"
+              id="sleepHoursInput"
+              min="0"
+              max="24"
+              step="0.25"
+              placeholder="Hours"
+              required
+            />
+            <button class="primary-btn" id="addSleepBtn" type="submit">LOG</button>
+          </form>
+          <ul class="sleep-list" id="sleepList"></ul>
+          <p class="fitness-summary" id="sleepSummary"></p>
+
+          <h3 class="section-heading">GOALS</h3>
+          <form class="study-form study-goal-form" id="fitnessGoalForm">
+            <select id="fitnessGoalPeriodSelect">
+              <option value="daily">Daily</option>
+              <option value="weekly" selected>Weekly</option>
+              <option value="monthly">Monthly</option>
+            </select>
+            <input
+              type="number"
+              id="fitnessGoalTargetInput"
+              placeholder="Target minutes"
+              min="1"
+              required
+            />
+            <button class="primary-btn" id="addFitnessGoalBtn" type="submit">ADD GOAL</button>
+          </form>
+          <ul class="goal-list" id="fitnessGoalList"></ul>
+
+          <h3 class="section-heading">ACHIEVEMENTS</h3>
+          <div class="achievement-grid" id="fitnessAchievementGrid"></div>
+
+          <h3 class="section-heading">WORKOUT ACTIVITY</h3>
+          <div id="fitnessHeatmap"></div>
+        </div>
+      </section>
+
+      <!-- ================= TAB: SMART MEMORY ================= -->
+      <section class="tab-panel" id="tab-memory" data-tab-panel="memory">
+        <div class="panel-card">
+          <h2 class="panel-title">SMART MEMORY</h2>
+          <p class="panel-sub">
+            Everything Charlie remembers about you, grouped by feature. Export or clear any category
+            on its own — nothing here is fabricated or hidden.
+          </p>
+          <ul class="memory-category-list" id="memoryCategoryList"></ul>
         </div>
       </section>
 

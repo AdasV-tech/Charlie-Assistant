@@ -8,6 +8,14 @@
    Applied via data-theme="..." on <html> — see src/theme/themeManager.js.
    "default" restates :root's own values explicitly (rather than relying on
    inheritance) so every theme is equally selectable and inspectable here.
+
+   Contrast check (WCAG 2.1, computed against each theme's --bg/--panel):
+   --text is 15:1-19:1 in every theme (AAA for normal text is 7:1) and
+   --text-dim is 4.36:1-6.84:1 (AA for normal text is 4.5:1, for large/UI
+   text 3:1) — every theme clears AA body text except --text-dim's exact
+   panel value in "minimal" (4.36:1), which stays within AA for large/UI
+   text. Re-run this check before adding a theme or changing an existing
+   one's --text/--text-dim/--bg/--panel values.
    ========================================================= */
 
 [data-theme='default'] {

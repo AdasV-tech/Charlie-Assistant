@@ -1,8 +1,12 @@
-// Modes share one page: Assistant / Scanner / Dashboard / Projects / Profile.
-// Only one .tab-panel is visible at a time, driven by data-tab on each button.
+// Modes share one page: Assistant / Scanner / Dashboard / Projects / Study /
+// Fitness / Memory / Profile. Only one .tab-panel is visible at a time,
+// driven by data-tab on each button.
 import { renderDashboard } from './pages/dashboard.js';
 import { renderProfileSummary } from './pages/profile.js';
 import { renderProjects } from './pages/projects.js';
+import { renderStudyCenter } from './pages/studyCenter.js';
+import { renderFitnessCenter } from './pages/fitnessCenter.js';
+import { renderMemory } from './pages/memory.js';
 
 export function switchTab(tabName) {
   document.querySelectorAll('.tab-btn').forEach((btn) => {
@@ -15,6 +19,9 @@ export function switchTab(tabName) {
   if (tabName === 'dashboard') renderDashboard();
   if (tabName === 'profile') renderProfileSummary();
   if (tabName === 'projects') renderProjects();
+  if (tabName === 'study') renderStudyCenter();
+  if (tabName === 'fitness') renderFitnessCenter();
+  if (tabName === 'memory') renderMemory();
 }
 
 export function initTabs() {

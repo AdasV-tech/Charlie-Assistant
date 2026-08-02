@@ -1,7 +1,18 @@
 import { switchTab } from '../../ui/tabs.js';
 import { startFocusTimer } from '../../ui/pages/dashboard.js';
 import { analyzeFoodByName } from '../../ui/pages/foodScanner.js';
-import { profileStore, suggestionsStore, projectsStore } from '../../store/stores.js';
+import {
+  profileStore,
+  suggestionsStore,
+  projectsStore,
+  assignmentsStore,
+  flashcardsStore,
+  workoutsStore,
+  habitsStore,
+} from '../../store/stores.js';
+import { isPastDue } from '../../lib/dateLabels.js';
+import { isDue } from '../../study/spacedRepetition.js';
+import { computeWorkoutStreak } from '../../fitness/achievements.js';
 import { setState } from '../../core/assistant.js';
 
 export const navigationPack = [
@@ -79,10 +90,50 @@ export const navigationPack = [
       if (!projects.length) return "You don't have any projects yet. Add one to get started.";
       const inProgress = projects.filter((p) => p.status === 'in-progress').length;
       const overdue = projects.filter(
-        (p) => p.deadline && p.status !== 'completed' && new Date(`${p.deadline}T00:00:00`) < new Date(new Date().toDateString()),
+        (p) => p.status !== 'completed' && isPastDue(p.deadline),
       ).length;
       const overdueNote = overdue ? `, and ${overdue} overdue` : '';
       return `You have ${projects.length} project${projects.length === 1 ? '' : 's'}, ${inProgress} in progress${overdueNote}.`;
+    },
+  },
+  {
+    patterns: ['open study center', 'show study center', 'study center'],
+    respond: () => {
+      setState('busy');
+      switchTab('study');
+      const assignments = assignmentsStore.get();
+      const flashcards = flashcardsStore.get();
+      if (!assignments.length && !flashcards.length) {
+        return 'Your study center is empty. Add a subject, assignment, or flashcard to get started.';
+      }
+      const pending = assignments.filter((a) => a.status !== 'done').length;
+      const dueCards = flashcards.filter((c) => isDue(c)).length;
+      return `You have ${pending} pending assignment${pending === 1 ? '' : 's'} and ${dueCards} flashcard${dueCards === 1 ? '' : 's'} due for review.`;
+    },
+  },
+  {
+    patterns: ['open fitness center', 'show fitness center', 'fitness center'],
+    respond: () => {
+      setState('busy');
+      switchTab('fitness');
+      const workouts = workoutsStore.get();
+      const habits = habitsStore.get();
+      if (!workouts.length && !habits.length) {
+        return 'Your fitness center is empty. Log a workout or add a habit to get started.';
+      }
+      const streak = computeWorkoutStreak(workouts);
+      const dueHabits = habits.filter(
+        (h) => !h.completions.includes(new Date().toISOString().slice(0, 10)),
+      ).length;
+      return `You have logged ${workouts.length} workout${workouts.length === 1 ? '' : 's'}, on a ${streak}-day streak, with ${dueHabits} habit${dueHabits === 1 ? '' : 's'} left to check off today.`;
+    },
+  },
+  {
+    patterns: ['open memory', 'show my memory', 'smart memory', 'what do you remember'],
+    respond: () => {
+      setState('busy');
+      switchTab('memory');
+      return "Here's everything I remember about you, grouped by feature.";
     },
   },
   {

@@ -5,6 +5,7 @@
 // one) — plus search, filter, sort, and real statistics.
 import { projectsStore } from '../../store/stores.js';
 import { escapeHtml } from '../../lib/utils.js';
+import { relativeDayLabel, isPastDue } from '../../lib/dateLabels.js';
 import { addLogLine } from '../transcript.js';
 import { showToast } from '../toast.js';
 import { flashState } from '../../core/assistant.js';
@@ -43,20 +44,12 @@ const PRIORITY_WEIGHT = { high: 3, medium: 2, low: 1 };
 let pendingAttachments = [];
 
 function deadlineLabel(deadline) {
-  if (!deadline) return 'No deadline';
-  const due = new Date(`${deadline}T00:00:00`);
-  const now = new Date();
-  now.setHours(0, 0, 0, 0);
-  const diffDays = Math.round((due - now) / 86_400_000);
-  if (diffDays < 0) return `Overdue by ${Math.abs(diffDays)} day${Math.abs(diffDays) === 1 ? '' : 's'}`;
-  if (diffDays === 0) return 'Due today';
-  if (diffDays === 1) return 'Due tomorrow';
-  return `Due in ${diffDays} days`;
+  return relativeDayLabel(deadline, { noDateLabel: 'No deadline' });
 }
 
 function isOverdue(project) {
   if (!project.deadline || project.status === 'completed') return false;
-  return new Date(`${project.deadline}T00:00:00`) < new Date(new Date().toDateString());
+  return isPastDue(project.deadline);
 }
 
 /* -------------------------- Statistics -------------------------- */
@@ -66,7 +59,9 @@ function renderStats() {
   const completed = projects.filter((p) => p.status === 'completed').length;
   const inProgress = projects.filter((p) => p.status === 'in-progress').length;
   const overdue = projects.filter(isOverdue).length;
-  const avgProgress = total ? Math.round(projects.reduce((sum, p) => sum + p.progress, 0) / total) : 0;
+  const avgProgress = total
+    ? Math.round(projects.reduce((sum, p) => sum + p.progress, 0) / total)
+    : 0;
 
   projectStats.innerHTML = `
     <div class="project-stat"><div class="project-stat-value">${total}</div><div class="project-stat-label">Total</div></div>
@@ -155,7 +150,11 @@ function saveProjectFromForm(e) {
     projectsStore.set(projects.map((p) => (p.id === editingId ? { ...p, ...fields } : p)));
     addLogLine(`Updated project "${name}".`, 'system');
   } else {
-    const entry = { id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, createdAt: now, ...fields };
+    const entry = {
+      id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+      createdAt: now,
+      ...fields,
+    };
     projectsStore.set([entry, ...projects]);
     flashState('busy');
     addLogLine(`Created project "${name}".`, 'system');

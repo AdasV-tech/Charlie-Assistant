@@ -9,6 +9,7 @@ import {
   foodHistoryStore,
   focusSessionsStore,
   conversationStore,
+  workoutsStore,
 } from '../../store/stores.js';
 import { addLogLine } from '../transcript.js';
 import { showToast } from '../toast.js';
@@ -18,6 +19,7 @@ import { switchTab } from '../tabs.js';
 import { scoreRingHTML } from '../../lib/scoreRing.js';
 import { getCurrentWeather } from '../../dashboard/weatherService.js';
 import { getQuoteOfTheDay, getDailyChallenge } from '../../dashboard/dailyContent.js';
+import { createCountdown, formatMMSS } from '../../lib/timerEngine.js';
 
 const greetingTitle = document.getElementById('greetingTitle');
 const greetingSub = document.getElementById('greetingSub');
@@ -143,6 +145,8 @@ const QUICK_ACTIONS = [
   { label: '📚 Study Mode', action: () => startFocusTimer('study') },
   { label: '💪 Workout Mode', action: () => startFocusTimer('workout') },
   { label: '📁 Projects', action: () => switchTab('projects') },
+  { label: '🎓 Study Center', action: () => switchTab('study') },
+  { label: '🏋️ Fitness Center', action: () => switchTab('fitness') },
   { label: '👤 Profile', action: () => switchTab('profile') },
 ];
 
@@ -222,43 +226,32 @@ function renderRecentConversations() {
 }
 
 /* --------------------------------------------------------
-   Focus timer — shared countdown engine for Study/Workout mode and the
-   "set a timer for N minutes" voice command.
+   Focus timer — Dashboard's own countdown display, powered by the shared
+   countdown engine (lib/timerEngine.js) also used by the Study Center's
+   subject-aware Pomodoro.
    -------------------------------------------------------- */
-let focusTimerInterval = null;
-let focusTimerSecondsLeft = 0;
-
-function updateTimerReadout() {
-  const m = Math.floor(focusTimerSecondsLeft / 60)
-    .toString()
-    .padStart(2, '0');
-  const s = (focusTimerSecondsLeft % 60).toString().padStart(2, '0');
-  timerReadout.textContent = `${m}:${s}`;
-}
+const dashboardCountdown = createCountdown({
+  onTick: (secondsLeft) => {
+    timerReadout.textContent = formatMMSS(secondsLeft);
+  },
+  onComplete: () => dashboardTimerComplete?.(),
+});
+let dashboardTimerComplete = null;
 
 export function stopFocusTimer() {
-  if (focusTimerInterval) {
-    clearInterval(focusTimerInterval);
-    focusTimerInterval = null;
-  }
+  dashboardCountdown.stop();
   timerBox.classList.add('hidden');
 }
 
 function runTimer(totalSeconds, label, onComplete) {
   stopFocusTimer();
-  focusTimerSecondsLeft = totalSeconds;
   timerLabel.textContent = label;
   timerBox.classList.remove('hidden');
-  updateTimerReadout();
-
-  focusTimerInterval = setInterval(() => {
-    focusTimerSecondsLeft -= 1;
-    updateTimerReadout();
-    if (focusTimerSecondsLeft <= 0) {
-      stopFocusTimer();
-      onComplete();
-    }
-  }, 1000);
+  dashboardTimerComplete = () => {
+    stopFocusTimer();
+    onComplete();
+  };
+  dashboardCountdown.start(totalSeconds);
 }
 
 export function startFocusTimer(mode) {
@@ -268,8 +261,26 @@ export function startFocusTimer(mode) {
     const modeLabel = mode === 'study' ? 'Study' : 'Workout';
     focusSessionsStore.set([
       ...focusSessionsStore.get(),
-      { mode, completedAt: new Date().toISOString() },
+      { mode, completedAt: new Date().toISOString(), durationMinutes },
     ]);
+    // A quick-start Workout Mode session also counts toward the Fitness
+    // Center's log/streak/goals — the same 20 minutes shouldn't be invisible
+    // there just because it started from the Dashboard's shortcut.
+    if (mode === 'workout') {
+      workoutsStore.set([
+        ...workoutsStore.get(),
+        {
+          id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+          name: 'Workout Mode',
+          type: 'cardio',
+          durationMinutes,
+          caloriesBurned: null,
+          date: new Date().toISOString().slice(0, 10),
+          notes: '',
+          createdAt: new Date().toISOString(),
+        },
+      ]);
+    }
     addLogLine(`${modeLabel} session complete. Nice work.`, 'system');
     showToast(`${modeLabel} session complete!`);
     notify(`${modeLabel} session complete. Nice work.`);

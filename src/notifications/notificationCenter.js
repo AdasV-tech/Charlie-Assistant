@@ -108,6 +108,11 @@ export function initNotificationCenter() {
   notificationPanelOverlay.addEventListener('click', (e) => {
     if (e.target === notificationPanelOverlay) notificationPanelOverlay.classList.add('hidden');
   });
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && !notificationPanelOverlay.classList.contains('hidden')) {
+      notificationPanelOverlay.classList.add('hidden');
+    }
+  });
   clearNotificationsBtn.addEventListener('click', () => {
     notificationsStore.set([]);
     renderList();

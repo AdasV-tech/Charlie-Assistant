@@ -45,6 +45,11 @@ export function initSettingsDrawer() {
   drawerOverlay.addEventListener('click', (e) => {
     if (e.target === drawerOverlay) drawerOverlay.classList.add('hidden');
   });
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && !drawerOverlay.classList.contains('hidden')) {
+      drawerOverlay.classList.add('hidden');
+    }
+  });
 
   geminiKeySaveBtn.addEventListener('click', async () => {
     const key = geminiKeyInput.value.trim();
